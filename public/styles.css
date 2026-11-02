@@ -2985,7 +2985,17 @@ body {
   width: 100%;
 }
 .ben-card-bank-select {
-  flex: 1 1 210px;
+  flex: 1 1 190px;
+  min-width: 0;
+  height: 38px !important;
+  padding: 6px 10px !important;
+  font-size: 12.5px !important;
+  background: #ffffff !important;
+  border: 1.5px solid #cbd5e1 !important;
+  border-radius: 10px !important;
+}
+.ben-card-acc-input {
+  flex: 1 1 140px;
   min-width: 0;
   height: 38px !important;
   padding: 6px 10px !important;
@@ -3259,6 +3269,7 @@ body {
     gap: 8px;
   }
   .ben-card-bank-select,
+  .ben-card-acc-input,
   .ben-card-bank-update-btn {
     width: 100% !important;
     flex: unset !important;

@@ -3511,6 +3511,7 @@ function buildInteractiveBeneficiaryCardsHtml(list, contextPrefix = 'dash') {
         String(STATE.selectedDashboardBeneficiaryId).toLowerCase() === String(bId).toLowerCase();
       const domKey = `${contextPrefix}-${bId.replace(/[^a-zA-Z0-9_-]/g, '')}`;
       const selectDomId = `benBankSelect-${domKey}`;
+      const accInputDomId = `benBankAccInput-${domKey}`;
 
       const optionsHtml = providersList
         .map(p => {
@@ -3565,7 +3566,7 @@ function buildInteractiveBeneficiaryCardsHtml(list, contextPrefix = 'dash') {
             </button>
           </div>
 
-          <!-- Quick Bank Update Row -->
+          <!-- Quick Bank & Account Number Update Row -->
           <div class="ben-card-bank-row">
             <div class="ben-card-bank-controls">
               <select
@@ -3575,10 +3576,18 @@ function buildInteractiveBeneficiaryCardsHtml(list, contextPrefix = 'dash') {
               >
                 ${optionsHtml}
               </select>
+              <input
+                type="text"
+                id="${accInputDomId}"
+                class="olowo-input ben-card-acc-input"
+                value="${acc.replace(/"/g, '&quot;')}"
+                placeholder="Account Number"
+                aria-label="Update beneficiary bank account number"
+              />
               <button
                 type="button"
                 class="olowo-btn-outline-green sm ben-card-bank-update-btn"
-                onclick="updateBeneficiaryBankOnMito('${bId}', '${selectDomId}')"
+                onclick="updateBeneficiaryBankOnMito('${bId}', '${selectDomId}', '${accInputDomId}')"
               >
                 Update Bank
               </button>
@@ -3813,13 +3822,15 @@ function clearSelectedDashboardBeneficiary() {
   }
 }
 
-async function updateBeneficiaryBankOnMito(beneficiaryId, selectDomId) {
+async function updateBeneficiaryBankOnMito(beneficiaryId, selectDomId, accInputDomId) {
   const selectEl = document.getElementById(selectDomId);
+  const accInputEl = accInputDomId ? document.getElementById(accInputDomId) : null;
   const selectedProviderId = selectEl ? selectEl.value : 'e3af932a-0326-4b65-b5f4-e8f753a69d4d';
   const selectedProviderName =
     selectEl && selectEl.options[selectEl.selectedIndex]
       ? selectEl.options[selectEl.selectedIndex].text
       : 'United Bank for Africa Plc (UBA)';
+  const updatedAccountNumber = accInputEl && accInputEl.value.trim() ? accInputEl.value.trim() : undefined;
 
   const userId = STATE.sender.mitoUserId || STATE.sender.userId || STATE.senderId || '';
   const res = await callApi('POST', '/api/v1/mito/Beneficiaries/UpdateBeneficiary', {
@@ -3828,7 +3839,8 @@ async function updateBeneficiaryBankOnMito(beneficiaryId, selectDomId) {
     senderId: STATE.senderId,
     providerId: selectedProviderId,
     providerName: selectedProviderName,
-    bankName: selectedProviderName
+    bankName: selectedProviderName,
+    ...(updatedAccountNumber ? { accountNumber: updatedAccountNumber, acctNumber: updatedAccountNumber } : {})
   });
 
   if (res.ok && res.data?.data) {
