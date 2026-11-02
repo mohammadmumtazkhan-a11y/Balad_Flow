@@ -134,6 +134,16 @@
         </div>
 
         <div class="olowo-auth-card">
+          <div class="olowo-preset-bar">
+            <span class="preset-label">Quick Fill:</span>
+            <button type="button" class="preset-chip" data-preset="david_incomplete" onclick="fillRegistrationPreset('david_incomplete')">
+              David Beckham (New User)
+            </button>
+            <button type="button" class="preset-chip active" data-preset="ahmed_complete" onclick="fillRegistrationPreset('ahmed_complete')">
+              Ahmed Diallo (Existing User)
+            </button>
+          </div>
+
           <form id="formLogin" onsubmit="handleLoginSubmit(event)">
             <div class="olowo-field">
               <label for="loginEmail">Email (Existing Registered User)</label>
@@ -207,10 +217,10 @@
           <!-- Preset Test Senders Bar for Quick Testing -->
           <div class="olowo-preset-bar">
             <span class="preset-label">Quick Fill:</span>
-            <button type="button" class="preset-chip active" onclick="fillRegistrationPreset('david_incomplete')">
+            <button type="button" class="preset-chip active" data-preset="david_incomplete" onclick="fillRegistrationPreset('david_incomplete')">
               David Beckham (New User)
             </button>
-            <button type="button" class="preset-chip" onclick="fillRegistrationPreset('ahmed_complete')">
+            <button type="button" class="preset-chip" data-preset="ahmed_complete" onclick="fillRegistrationPreset('ahmed_complete')">
               Ahmed Diallo (Existing User)
             </button>
           </div>

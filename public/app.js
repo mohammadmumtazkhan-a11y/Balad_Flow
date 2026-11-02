@@ -241,7 +241,7 @@ function switchHighLevelFlowMode(mode) {
   STATE.forceAllowKycEdit = false;
 
   if (STATE.flowMode === 'EXISTING_USER') {
-    fillRegistrationPreset('ahmed_complete');
+    fillRegistrationPreset('ahmed_complete', true);
     const loginEmailEl = document.getElementById('loginEmail');
     if (loginEmailEl) loginEmailEl.value = 'ahmed.diallo@mitonetwork.com';
     STATE.sender = {
@@ -270,7 +270,7 @@ function switchHighLevelFlowMode(mode) {
     updateTopFlowBarForUserState();
     jumpToView('login');
   } else {
-    fillRegistrationPreset('david_incomplete');
+    fillRegistrationPreset('david_incomplete', true);
     STATE.sender = {
       senderId: '',
       userId: '',
@@ -392,9 +392,10 @@ function syncRegFullNameFromParts() {
   }
 }
 
-function fillRegistrationPreset(presetKey) {
-  document.querySelectorAll('.preset-chip').forEach((btn, idx) => {
-    btn.classList.toggle('active', (presetKey === 'david_incomplete' && idx === 0) || (presetKey === 'ahmed_complete' && idx === 1));
+function fillRegistrationPreset(presetKey, skipViewSwitch = false) {
+  document.querySelectorAll('.preset-chip').forEach(btn => {
+    const dp = btn.getAttribute('data-preset');
+    btn.classList.toggle('active', dp === presetKey);
   });
 
   const setVal = (id, val) => {
@@ -408,6 +409,7 @@ function fillRegistrationPreset(presetKey) {
     setVal('regLastName', 'Diallo');
     setVal('regFullName', 'Ahmed Diallo');
     setVal('regEmail', 'ahmed.diallo@mitonetwork.com');
+    setVal('loginEmail', 'ahmed.diallo@mitonetwork.com');
     setVal('regDialCode', '+44');
     setVal('regPhone', '7700900456');
     setVal('regGender', 'M');
@@ -423,6 +425,9 @@ function fillRegistrationPreset(presetKey) {
     setVal('regBirthCountryIso3', 'GBR');
     STATE.presetMode = 'ahmed_complete';
     STATE.flowMode = 'EXISTING_USER';
+    if (!skipViewSwitch) {
+      switchHighLevelFlowMode('EXISTING_USER');
+    }
   } else {
     setVal('regFirstName', 'David');
     setVal('regMiddleName', '');
@@ -444,6 +449,9 @@ function fillRegistrationPreset(presetKey) {
     setVal('regBirthCountryIso3', 'GBR');
     STATE.presetMode = 'david_incomplete';
     STATE.flowMode = 'NEW_USER';
+    if (!skipViewSwitch) {
+      switchHighLevelFlowMode('NEW_USER');
+    }
   }
 }
 
