@@ -41,32 +41,15 @@
     </svg>
   </div>
 
-  <!-- Discrete Top Flow Mode Switcher (Flow 1: New User vs Flow 2: Existing User) & Step Navigator -->
+  <!-- Discrete Top Flow Mode Switcher (Flow 1: New User vs Flow 2: Existing User) -->
   <div class="flow-helper-bar" id="flowHelperBar" style="flex-wrap:wrap;gap:8px;">
-    <div style="display:flex;align-items:center;gap:6px;padding-right:10px;border-right:1.5px solid #cbd5e1;">
+    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
       <span class="flow-helper-label" style="font-weight:800;color:#0f172a;">Select Flow:</span>
       <button type="button" id="btnFlowModeNewUser" class="olowo-btn-green sm" onclick="switchHighLevelFlowMode('NEW_USER')" style="font-size:11.5px;padding:5px 10px;">
         🆕 Flow 1: New User (Register All Info → Corridors &amp; Select Bank → Lock Rate → Submit Txn → MITO Hosted Page)
       </button>
       <button type="button" id="btnFlowModeExistingUser" class="olowo-btn-outline-green sm" onclick="switchHighLevelFlowMode('EXISTING_USER')" style="font-size:11.5px;padding:5px 10px;">
         🔁 Flow 2: Existing User (Log In → Corridors &amp; Select Bank → Lock Rate → Submit Txn → MITO Hosted Page)
-      </button>
-    </div>
-    <div class="flow-helper-steps">
-      <button type="button" class="flow-pill active" id="flowPillStep1Auth" data-goto="auth" onclick="jumpToView(STATE.flowMode === 'EXISTING_USER' ? 'login' : 'register')">1. User Registration (1 Form)</button>
-      <button type="button" class="flow-pill" id="flowPillStep2Rate" data-goto="dashboard" onclick="jumpToView('dashboard')">2. Corridors, Select Bank, Lock Rate &amp; Submit</button>
-      <button type="button" class="flow-pill hidden" id="flowPillStep3Kyc" data-goto="kyc" onclick="jumpToView('dashboard')">KYC</button>
-      <button type="button" class="flow-pill hidden" id="flowPillStep4Ben" data-goto="beneficiary" onclick="jumpToView('dashboard')">Beneficiary</button>
-      <button type="button" class="flow-pill hidden" id="flowPillStep5Sum" data-goto="summary" onclick="jumpToView('summary')">Summary</button>
-      <button type="button" class="flow-pill" id="flowPillStep6Pay" data-goto="payment" onclick="jumpToView('payment')">3. MITO Hosted Page (Beneficiary &amp; Payment)</button>
-      <button type="button" class="flow-pill" id="flowPillStep7" data-goto="success" onclick="jumpToView('success')">4. See Status &amp; Dashboard</button>
-    </div>
-    <div class="flow-helper-actions">
-      <button type="button" class="flow-util-btn" onclick="openInspectorModal('logs')">
-        📡 API Logs (<span id="apiLogCount">0</span>)
-      </button>
-      <button type="button" class="flow-util-btn" onclick="openInspectorModal('wireframes')">
-        📐 Wireframes &amp; Docs
       </button>
     </div>
   </div>
