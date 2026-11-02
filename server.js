@@ -2490,6 +2490,100 @@ app.get('/api/v1/mito/Transactions/:id/beneficiary-status', async (req, res) => 
   });
 });
 
+// Check live Payment Journey status (`requiredAction.payment`) and determine whether Payment Succeeded or Failed
+app.get('/api/v1/mito/Transactions/:id/payment-status', async (req, res) => {
+  const tx = findTransactionByQuery({ transactionId: req.params.id, journeyCode: req.params.id });
+  if (!tx) {
+    return res.status(404).json({ code: 404, responseType: 'Error', message: 'Transaction not found.' });
+  }
+  const payJc = tx.paymentJourneyCode || tx.journeyCode;
+  let liveJourney = null;
+  let isCompleted = false;
+  let isFailed = false;
+  let resolvedOrderStatus = tx.rawMitoOrderStatus || null;
+  let resolvedOrderNo = tx.orderNo || tx.reference || '';
+  let resolvedPaymentMethod = tx.paymentMethod || 'MITO Hosted Payment';
+
+  try {
+    const jRes = await fetch(
+      `${MITO_STAGING_CONFIG.baseUrl}/Journey/status?journeyCode=${encodeURIComponent(payJc)}`,
+      { headers: { ApiKey: 'd2783dc0-0ebc-4980-98ec-6203215f81ec' } }
+    ).then(r => r.json());
+    liveJourney = jRes && jRes.data ? jRes.data : null;
+
+    if (liveJourney) {
+      const jStatus = String(liveJourney.journeyStatus || '').trim().toUpperCase();
+      const oStatus = String(liveJourney.orderStatus || '').trim().toUpperCase();
+      const txMod = (liveJourney.modules || []).find(
+        m => String(m.journeyModuleCode || m.moduleName || '').toLowerCase() === 'transaction'
+      );
+      const mStatus = txMod ? String(txMod.moduleStatus || '').trim().toUpperCase() : '';
+
+      if (liveJourney.orderNo || liveJourney.reference) {
+        resolvedOrderNo = String(liveJourney.orderNo || liveJourney.reference);
+      }
+      if (liveJourney.paymentProviders && !String(liveJourney.paymentProviders).includes(',')) {
+        resolvedPaymentMethod = `MITO Hosted Payment (${liveJourney.paymentProviders})`;
+      }
+
+      const FAIL_STATUSES = new Set([
+        'FAILED',
+        'FAIL',
+        'COMPFAILED',
+        'CANCELLED',
+        'CANCELED',
+        'CLOSED',
+        'ABORTED',
+        'EXPIRED',
+        'TIMEOUT'
+      ]);
+      const DONE_ORDER_STATUSES = new Set([
+        'READYTOPROCESS',
+        'PROCESSED',
+        'AWAITINGAFFILIATEUPDATE',
+        'COMPSUCCESS',
+        'SUCCESS',
+        'SUCCESSFUL',
+        'SUCCEEDED',
+        'PAID',
+        'COMPLETED',
+        'APPROVED',
+        'AWAITINGPAYMENT',
+        'INREVIEW'
+      ]);
+
+      if (FAIL_STATUSES.has(oStatus) || FAIL_STATUSES.has(jStatus) || FAIL_STATUSES.has(mStatus)) {
+        isFailed = true;
+        resolvedOrderStatus = oStatus || jStatus || mStatus || 'FAILED';
+      } else if (
+        jStatus === 'COMPLETED' ||
+        jStatus === 'APPROVED' ||
+        mStatus === 'COMPLETED' ||
+        mStatus === 'APPROVED' ||
+        DONE_ORDER_STATUSES.has(oStatus)
+      ) {
+        isCompleted = true;
+        resolvedOrderStatus = oStatus && oStatus !== 'BENEFICIARYCOMPLETED' ? oStatus : 'READYTOPROCESS';
+      }
+    }
+  } catch (_) {}
+
+  res.json({
+    code: 200,
+    responseType: 'Success',
+    data: {
+      transactionId: tx.transactionId,
+      paymentJourneyCode: payJc,
+      isCompleted,
+      isFailed,
+      orderStatus: resolvedOrderStatus,
+      orderNo: resolvedOrderNo,
+      paymentMethod: resolvedPaymentMethod,
+      liveJourney
+    }
+  });
+});
+
 // Handle Beneficiary Completion, Failure (with/without Retry Allowed), or Retry (Re-adding Beneficiary Details)
 app.post('/api/v1/mito/Transactions/BeneficiaryOutcome', (req, res) => {
   const {

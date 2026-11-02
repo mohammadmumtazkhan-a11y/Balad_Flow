@@ -1804,6 +1804,21 @@
             <code id="succRedirectUrlText">http://localhost:3000/remittances/callback?partnerReferenceNumber=OLW-REF-...&amp;orderStatus=READYTOPROCESS&amp;status=SUCCESS</code>
           </div>
 
+          <!-- Auto-Redirect to Dashboard Countdown Banner (Shown after Successful OR Failed Payment) -->
+          <div id="succAutoRedirectBanner" class="mito-check-banner mt-12 mb-12" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;background:#f0fdf4;border:1.5px solid #86efac;color:#14532d;padding:10px 14px;border-radius:10px;">
+            <div style="font-size:13.5px;font-weight:700;" id="succAutoRedirectText">
+              ⏱️ Payment status captured — Automatically redirecting to Dashboard in <strong id="succAutoRedirectSeconds">5</strong>s...
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <button type="button" class="olowo-btn-outline-green sm" onclick="cancelStatusPageAutoRedirect()" style="background:#ffffff;padding:5px 10px;font-size:12px;">
+                ⏸ Stay on Status Page
+              </button>
+              <button type="button" class="olowo-btn-green sm" onclick="redirectFromStatusPageToDashboardNow()" style="padding:5px 12px;font-size:12px;">
+                Go to Dashboard Now →
+              </button>
+            </div>
+          </div>
+
           <!-- Hero Status Icon & Heading -->
           <div class="success-hero-block">
             <div class="success-check-circle" id="succHeroIcon">✓</div>

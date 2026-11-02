@@ -338,10 +338,16 @@ function jumpToView(viewName) {
       handleConfirmSummaryAndInitiatePayment({ bankOnlyFlow: true });
     }
   } else if (viewName === 'success') {
+    stopBeneficiaryStatusAutoPolling();
+    stopPaymentStatusAutoPolling();
     if (rateCountdownInterval) {
       clearInterval(rateCountdownInterval);
       rateCountdownInterval = null;
     }
+  }
+
+  if (viewName !== 'success') {
+    clearStatusPageAutoRedirectTimer();
   }
 
   // Show the side Rate Lock & Countdown Widget whenever a rate is locked and user is in active checkout steps
@@ -2346,6 +2352,7 @@ async function handleBeneficiaryCompletedLoadPaymentLink(skipApiCall = false, pa
   }
 
   loadMitoLivePaymentIframe(normalizedPaymentQrUrl, 'paymentQr');
+  startPaymentStatusAutoPolling();
 }
 
 // In case Beneficiary fails -> Show Fallback Page & Message, and if allowed, allow user to add details again OR abort transaction & land on Dashboard
@@ -2504,6 +2511,50 @@ function stopBeneficiaryStatusAutoPolling() {
   }
 }
 
+function startPaymentStatusAutoPolling() {
+  stopPaymentStatusAutoPolling();
+  if (!STATE.transactionId) return;
+
+  const checkPaymentOnce = async () => {
+    if (STATE.currentView !== 'payment' || STATE.hostedStage !== 'payment' || !STATE.transactionId) {
+      return;
+    }
+    try {
+      const r = await fetch(`/api/v1/mito/Transactions/${encodeURIComponent(STATE.transactionId)}/payment-status`);
+      if (!r.ok) return;
+      const json = await r.json();
+      const d = json && json.data ? json.data : null;
+      if (!d || STATE.hostedStage !== 'payment') return;
+      if (d.isCompleted) {
+        stopPaymentStatusAutoPolling();
+        STATE.hostedStage = 'payment_completed';
+        await completePaymentAndRedirect(d.orderStatus || 'READYTOPROCESS', {
+          paymentMethod: d.paymentMethod || 'MITO Hosted Payment',
+          orderNo: d.orderNo || '',
+          autoRedirectToDashboard: true
+        });
+      } else if (d.isFailed) {
+        stopPaymentStatusAutoPolling();
+        STATE.hostedStage = 'payment_failed';
+        await completePaymentAndRedirect(d.orderStatus || 'FAILED', {
+          paymentMethod: d.paymentMethod || 'MITO Hosted Payment',
+          orderNo: d.orderNo || '',
+          autoRedirectToDashboard: true
+        });
+      }
+    } catch (_) {}
+  };
+
+  STATE.paymentPollTimerId = setInterval(checkPaymentOnce, 1500);
+}
+
+function stopPaymentStatusAutoPolling() {
+  if (STATE.paymentPollTimerId) {
+    clearInterval(STATE.paymentPollTimerId);
+    STATE.paymentPollTimerId = null;
+  }
+}
+
 // Listen for postMessage events from the MITO Hosted iframe (`BALAD_BENEFICIARY_CALLBACK`, `MITO_LINK_SUCCESS`, `MITO_LINK_EXIT`)
 // Note: MITO's hosted page sends `JSON.stringify({ type: 'MITO_LINK_SUCCESS', ... })` as a string, so we parse string messages as well!
 window.addEventListener('message', e => {
@@ -2523,11 +2574,47 @@ window.addEventListener('message', e => {
     } else if (msg.status === 'FAILED') {
       handleBeneficiaryFailedShowFallback(msg.isRetryAllowed !== false, msg.failureReason || '', true);
     }
-  } else if (msg.type === 'MITO_LINK_SUCCESS' && STATE.hostedStage === 'beneficiary') {
-    handleBeneficiaryCompletedLoadPaymentLink(false, STATE.requiredActionPayment || null);
-  } else if (msg.type === 'MITO_LINK_EXIT' && STATE.hostedStage === 'beneficiary') {
-    const reason = (msg.error && (msg.error.reason || msg.error.status)) || (msg.payload && (msg.payload.reason || msg.payload.status)) || 'Beneficiary step exited or failed';
-    handleBeneficiaryFailedShowFallback(true, `MITO Hosted Page exited (${reason}). You can add the beneficiary details again or abort the transaction.`, false);
+  } else if (msg.type === 'MITO_LINK_SUCCESS') {
+    if (STATE.hostedStage === 'beneficiary') {
+      handleBeneficiaryCompletedLoadPaymentLink(false, STATE.requiredActionPayment || null);
+    } else if (STATE.hostedStage === 'payment') {
+      stopPaymentStatusAutoPolling();
+      STATE.hostedStage = 'payment_completed';
+      const orderStatus =
+        (msg.payload && msg.payload.status) ||
+        (msg.metadata && msg.metadata.status) ||
+        'READYTOPROCESS';
+      const orderNo =
+        (msg.payload && msg.payload.transactionReference) ||
+        (msg.metadata && msg.metadata.transactionReference) ||
+        '';
+      completePaymentAndRedirect(
+        orderStatus === 'Completed' || orderStatus === 'BENEFICIARYCOMPLETED' ? 'READYTOPROCESS' : orderStatus,
+        { orderNo, autoRedirectToDashboard: true }
+      );
+    }
+  } else if (msg.type === 'MITO_LINK_EXIT') {
+    const reason =
+      (msg.error && (msg.error.status || msg.error.reason)) ||
+      (msg.payload && (msg.payload.status || msg.payload.reason)) ||
+      'FAILED';
+    if (STATE.hostedStage === 'beneficiary') {
+      handleBeneficiaryFailedShowFallback(
+        true,
+        `MITO Hosted Page exited (${reason}). You can add the beneficiary details again or abort the transaction.`,
+        false
+      );
+    } else if (STATE.hostedStage === 'payment') {
+      stopPaymentStatusAutoPolling();
+      STATE.hostedStage = 'payment_failed';
+      const upperReason = String(reason || 'FAILED').toUpperCase();
+      const mappedFailStatus = upperReason.includes('CANCEL')
+        ? 'CANCELLED'
+        : upperReason.includes('EXPIR')
+        ? 'EXPIRED'
+        : 'FAILED';
+      completePaymentAndRedirect(mappedFailStatus, { autoRedirectToDashboard: true });
+    }
   }
 });
 
@@ -2538,8 +2625,16 @@ function loadMitoLivePaymentIframe(targetUrl, mode = 'beneficiary') {
   const btnBeneficiaryForm = document.getElementById('btnMitoFrameModeBeneficiaryForm');
   const btnPaymentQr = document.getElementById('btnMitoFrameModePaymentQr');
   const btnCheckout = document.getElementById('btnMitoFrameModeCheckout');
-  if (iframe && targetUrl) {
-    iframe.src = targetUrl;
+
+  // Append `mitoEmbed=1` when embedding MITO's public Heroku page inside the iframe so MITO uses `postMessage`
+  // instead of attempting a cross-origin private-network redirect to `http://localhost:3000` (which Chrome blocks)!
+  let iframeSrcUrl = targetUrl;
+  if (iframeSrcUrl && iframeSrcUrl.includes('mito-checkout') && !iframeSrcUrl.includes('mitoEmbed=')) {
+    iframeSrcUrl += (iframeSrcUrl.includes('?') ? '&' : '?') + 'mitoEmbed=1';
+  }
+
+  if (iframe && iframeSrcUrl) {
+    iframe.src = iframeSrcUrl;
   }
   if (urlBar && targetUrl) {
     urlBar.textContent = `🔒 ${targetUrl}`;
@@ -2566,28 +2661,36 @@ function loadMitoLivePaymentIframe(targetUrl, mode = 'beneficiary') {
 function switchMitoLivePaymentFrameMode(mode) {
   hideBeneficiaryFallbackPage();
   if (mode === 'beneficiary') {
+    STATE.hostedStage = 'beneficiary';
     const benQrUrl =
       STATE.beneficiaryQrUrl ||
       `https://mito-checkout-1cca8e18297e.herokuapp.com/?journeyCode=${encodeURIComponent(STATE.beneficiaryJourneyCode || STATE.journeyCode || '')}`;
     loadMitoLivePaymentIframe(benQrUrl, 'beneficiary');
+    startBeneficiaryStatusAutoPolling();
   } else if (mode === 'beneficiaryForm') {
+    STATE.hostedStage = 'beneficiary';
     const benFormUrl =
       STATE.beneficiaryDirectUrl ||
       `https://mito-checkout-1cca8e18297e.herokuapp.com/retail-transaction/flow?journeyCode=${encodeURIComponent(STATE.beneficiaryJourneyCode || STATE.journeyCode || '')}`;
     loadMitoLivePaymentIframe(benFormUrl, 'beneficiaryForm');
+    startBeneficiaryStatusAutoPolling();
   } else if (mode === 'paymentQr') {
+    STATE.hostedStage = 'payment';
     const payQrUrl =
       STATE.paymentQrUrl ||
       STATE.paymentUrl ||
       `https://mito-checkout-1cca8e18297e.herokuapp.com/?journeyCode=${encodeURIComponent(STATE.paymentJourneyCode || STATE.journeyCode || '')}`;
     loadMitoLivePaymentIframe(payQrUrl, 'paymentQr');
+    startPaymentStatusAutoPolling();
   } else {
+    STATE.hostedStage = 'payment';
     const checkoutUrl =
       STATE.paymentDirectUrl ||
       STATE.paymentCheckoutUrl ||
       STATE.paymentUrl ||
       `https://mito-checkout-1cca8e18297e.herokuapp.com/retail-transaction/flow?journeyCode=${encodeURIComponent(STATE.paymentJourneyCode || STATE.journeyCode || '')}`;
     loadMitoLivePaymentIframe(checkoutUrl, 'checkout');
+    startPaymentStatusAutoPolling();
   }
 }
 
@@ -2944,9 +3047,9 @@ function renderStep7TransactionResult(tx, simulatedResult, paymentMethod, captur
       topPill7El.style.color = '#ffffff';
     }
     if (primaryCtaBtn) {
-      primaryCtaBtn.textContent = '🔄 Reopen MITO Payment Checkout (Step 6) →';
+      primaryCtaBtn.textContent = 'Return to Olowo Dashboard →';
       primaryCtaBtn.style.background = '#dc2626';
-      primaryCtaBtn.onclick = () => jumpToView('payment');
+      primaryCtaBtn.onclick = () => jumpToView('dashboard');
     }
   } else if (paymentCase === 'EXPIRED') {
     heroIcon.textContent = '⌛';
@@ -2955,7 +3058,7 @@ function renderStep7TransactionResult(tx, simulatedResult, paymentMethod, captur
     statusPill.style.background = '#fee2e2';
     statusPill.style.color = '#991b1b';
     mainTitle.textContent = 'Payment session expired';
-    subtitle.textContent = `The MITO payment session for transaction ${tx.transactionId} timed out before payment was completed. No funds were debited — please lock a fresh rate and try again.`;
+    subtitle.textContent = `The MITO payment session for transaction ${tx.transactionId} timed out before payment was completed. No funds were debited — returning to Dashboard.`;
 
     if (amountBanner) amountBanner.style.background = 'linear-gradient(135deg, #7f1d1d, #dc2626)';
     if (leftLabel) leftLabel.textContent = 'Payment status (No funds debited)';
@@ -2981,13 +3084,13 @@ function renderStep7TransactionResult(tx, simulatedResult, paymentMethod, captur
       txBadgeEl.style.color = '#ffffff';
     }
     if (topPill7El) {
-      topPill7El.textContent = '7. Session Expired';
+      topPill7El.textContent = '4. Session Expired';
       topPill7El.style.background = '#dc2626';
       topPill7El.style.borderColor = '#dc2626';
       topPill7El.style.color = '#ffffff';
     }
     if (primaryCtaBtn) {
-      primaryCtaBtn.textContent = '🔒 Lock Fresh Rate & Restart Transfer (Step 2) →';
+      primaryCtaBtn.textContent = 'Return to Olowo Dashboard →';
       primaryCtaBtn.style.background = '#dc2626';
       primaryCtaBtn.onclick = () => jumpToView('dashboard');
     }
@@ -2997,8 +3100,8 @@ function renderStep7TransactionResult(tx, simulatedResult, paymentMethod, captur
     statusPill.textContent = `Payment Failed or Declined (${rawMitoOrderStatus})`;
     statusPill.style.background = '#fee2e2';
     statusPill.style.color = '#991b1b';
-    mainTitle.textContent = 'Payment was not completed';
-    subtitle.textContent = `No funds were debited for transaction ${tx.transactionId}. You can retry payment or choose a different payment method anytime.`;
+    mainTitle.textContent = 'Payment failed — was not completed';
+    subtitle.textContent = `No funds were debited for transaction ${tx.transactionId}. Showing failed payment status before redirecting you to the Dashboard.`;
 
     // Payment did NOT happen — do NOT say "You paid" or "Recipient receives", and use Red colour!
     if (amountBanner) amountBanner.style.background = 'linear-gradient(135deg, #7f1d1d, #dc2626)';
@@ -3025,15 +3128,15 @@ function renderStep7TransactionResult(tx, simulatedResult, paymentMethod, captur
       txBadgeEl.style.color = '#ffffff';
     }
     if (topPill7El) {
-      topPill7El.textContent = '7. Payment Failed';
+      topPill7El.textContent = '4. Payment Failed';
       topPill7El.style.background = '#dc2626';
       topPill7El.style.borderColor = '#dc2626';
       topPill7El.style.color = '#ffffff';
     }
     if (primaryCtaBtn) {
-      primaryCtaBtn.textContent = '🔄 Retry Payment on MITO Checkout (Step 6) →';
+      primaryCtaBtn.textContent = 'Return to Olowo Dashboard →';
       primaryCtaBtn.style.background = '#dc2626';
-      primaryCtaBtn.onclick = () => jumpToView('payment');
+      primaryCtaBtn.onclick = () => jumpToView('dashboard');
     }
   }
 
@@ -3081,8 +3184,69 @@ function renderStep7TransactionResult(tx, simulatedResult, paymentMethod, captur
     `;
   }
 
-  // Navigate to the Result Page!
+  // Navigate to the Payment Status Page (`view-success`) first, then automatically redirect to Dashboard (`view-dashboard`)!
   jumpToView('success');
+  startStatusPageToDashboardCountdown(4, normalizedStatus, rawMitoOrderStatus);
+}
+
+let statusPageRedirectInterval = null;
+
+function clearStatusPageAutoRedirectTimer() {
+  if (statusPageRedirectInterval) {
+    clearInterval(statusPageRedirectInterval);
+    statusPageRedirectInterval = null;
+  }
+}
+
+function cancelStatusPageAutoRedirect() {
+  clearStatusPageAutoRedirectTimer();
+  const txtEl = document.getElementById('succAutoRedirectText');
+  if (txtEl) {
+    txtEl.innerHTML = `⏸ Auto-redirect paused — You can review this Payment Status page and click <strong>"Go to Dashboard Now →"</strong> whenever ready.`;
+  }
+}
+
+function redirectFromStatusPageToDashboardNow() {
+  clearStatusPageAutoRedirectTimer();
+  jumpToView('dashboard');
+}
+
+function startStatusPageToDashboardCountdown(seconds = 4, normalizedStatus = 'SUCCESS', rawMitoOrderStatus = 'READYTOPROCESS') {
+  clearStatusPageAutoRedirectTimer();
+  let rem = seconds;
+  const banner = document.getElementById('succAutoRedirectBanner');
+  const txtEl = document.getElementById('succAutoRedirectText');
+  if (banner) {
+    banner.classList.remove('hidden');
+    const isSucc = normalizedStatus === 'SUCCESS';
+    const isPend = normalizedStatus === 'PENDING';
+    banner.style.background = isSucc ? '#f0fdf4' : isPend ? '#fffbeb' : '#fef2f2';
+    banner.style.borderColor = isSucc ? '#86efac' : isPend ? '#fcd34d' : '#fca5a5';
+    banner.style.color = isSucc ? '#14532d' : isPend ? '#92400e' : '#991b1b';
+  }
+  const updateBannerText = () => {
+    if (!txtEl) return;
+    const statusLabel =
+      normalizedStatus === 'SUCCESS'
+        ? `✅ Payment Successful (${rawMitoOrderStatus})`
+        : normalizedStatus === 'PENDING'
+        ? `⏳ Payment In Process (${rawMitoOrderStatus})`
+        : `❌ Payment Failed / Not Completed (${rawMitoOrderStatus})`;
+    txtEl.innerHTML = `${statusLabel} — Showing Payment Status page and redirecting to <strong>Dashboard</strong> in <strong>${rem}s</strong>...`;
+  };
+  updateBannerText();
+
+  statusPageRedirectInterval = setInterval(() => {
+    rem -= 1;
+    if (rem <= 0) {
+      clearStatusPageAutoRedirectTimer();
+      if (STATE.currentView === 'success') {
+        jumpToView('dashboard');
+      }
+      return;
+    }
+    updateBannerText();
+  }, 1000);
 }
 
 // ============================================================================
