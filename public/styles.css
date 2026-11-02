@@ -491,6 +491,57 @@ body {
   background: #f2f9ec;
 }
 
+.olowo-btn-outline-green {
+  background: #ffffff;
+  color: var(--olowo-green);
+  border: 1.5px solid var(--olowo-green);
+  border-radius: var(--radius-btn);
+  padding: 11px 18px;
+  font-size: 14px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
+  box-sizing: border-box;
+}
+.olowo-btn-outline-green:hover {
+  background: #f0fdf4;
+  border-color: var(--olowo-green-hover);
+}
+.olowo-btn-outline-green.sm {
+  padding: 7px 13px;
+  font-size: 12.5px;
+  border-radius: 10px;
+  line-height: 1.3;
+}
+
+.olowo-btn-danger-outline {
+  background: #fff1f2;
+  color: #be123c;
+  border: 1.5px solid #fda4af;
+  border-radius: 10px;
+  padding: 7px 13px;
+  font-size: 12.5px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  transition: background 0.15s ease, border-color 0.15s ease;
+  box-sizing: border-box;
+  line-height: 1.3;
+}
+.olowo-btn-danger-outline:hover {
+  background: #ffe4e6;
+  border-color: #fb7185;
+}
+
 .full-w { width: 100%; }
 .flex-1 { flex: 1; }
 .center { text-align: center; }
@@ -2824,6 +2875,131 @@ body {
 }
 
 /* ============================================================================
+   INTERACTIVE BENEFICIARY MANAGEMENT CARDS (Desktop & Mobile Responsive)
+   Guarantees 100% horizontal text width — never squishes text vertically!
+   ============================================================================ */
+.beneficiary-manage-card {
+  border: 2px solid #bbf7d0;
+  background: #f0fdf4;
+  border-radius: 14px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  width: 100%;
+  box-sizing: border-box;
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+.beneficiary-manage-card.is-selected {
+  border-color: #16a34a;
+  background: #dcfce7;
+  box-shadow: 0 4px 14px rgba(22, 163, 74, 0.12);
+}
+
+.ben-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+}
+
+.ben-card-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+}
+
+.ben-card-name {
+  color: #14532d;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.ben-uuid-pill {
+  font-size: 11.5px;
+  color: #334155;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  padding: 3px 8px;
+  border-radius: 6px;
+  width: fit-content;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
+.ben-card-bank-summary {
+  font-size: 12.5px;
+  color: #1e293b;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  width: 100%;
+}
+
+.ben-card-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+}
+.ben-card-actions .ben-select-btn {
+  flex: 1 1 210px;
+  justify-content: center;
+  text-align: center;
+  white-space: normal;
+  line-height: 1.3;
+}
+.ben-card-actions .ben-delete-btn {
+  flex: 0 0 auto;
+}
+
+.ben-card-bank-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 10px;
+  border-top: 1px dashed #86efac;
+  width: 100%;
+}
+.ben-card-bank-label {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #166534;
+  margin: 0;
+  line-height: 1.35;
+}
+.ben-card-bank-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+}
+.ben-card-bank-select {
+  flex: 1 1 210px;
+  min-width: 0;
+  height: 38px !important;
+  padding: 6px 10px !important;
+  font-size: 12.5px !important;
+  background: #ffffff !important;
+  border: 1.5px solid #cbd5e1 !important;
+  border-radius: 10px !important;
+}
+.ben-card-bank-update-btn {
+  flex: 0 1 auto;
+  white-space: normal;
+}
+
+/* ============================================================================
    COMPREHENSIVE MOBILE PHONE & TABLET UI/UX OPTIMIZATION
    No overflowing, no misalignment, proper spacing, and full symmetry
    ============================================================================ */
@@ -2991,8 +3167,35 @@ body {
   }
 
   /* Transactions & Retrieved Beneficiaries Rows on Mobile */
-  .olowo-transactions-box {
-    padding: 14px;
+  .olowo-transactions-box,
+  #dashboardBeneficiariesListBox {
+    padding: 12px !important;
+  }
+  #dashExistingBeneficiariesPanel {
+    padding: 12px !important;
+  }
+  .beneficiary-manage-card {
+    padding: 12px 13px;
+    gap: 10px;
+  }
+  .ben-card-actions {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+  }
+  .ben-card-actions .ben-select-btn {
+    width: 100%;
+    flex: unset;
+  }
+  .ben-card-bank-controls {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .ben-card-bank-select,
+  .ben-card-bank-update-btn {
+    width: 100% !important;
+    flex: unset !important;
   }
   .tx-history-row {
     flex-direction: column;

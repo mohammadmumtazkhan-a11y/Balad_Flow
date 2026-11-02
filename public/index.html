@@ -772,13 +772,16 @@
 
           <!-- RETRIEVED ADDED BENEFICIARIES SECTION (Populated via GET /api/v1/mito/Beneficiary after successful payment) -->
           <div id="dashboardBeneficiariesSection" class="olowo-transactions-section">
-            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
-              <h3 style="margin:0;">Added Beneficiaries (<code style="font-size:12px;">GET /api/v1/mito/Beneficiary</code>)</h3>
-              <button type="button" class="olowo-btn-outline-green sm" onclick="retrieveAddedBeneficiariesAfterPayment()" style="background:#ffffff;padding:5px 12px;font-size:12px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px;">
+              <h3 style="margin:0;display:flex;align-items:center;flex-wrap:wrap;gap:8px;">
+                <span>Added Beneficiaries</span>
+                <code class="endpoint-code-chip" style="font-size:11.5px;font-weight:700;">GET /api/v1/mito/Beneficiary</code>
+              </h3>
+              <button type="button" class="olowo-btn-outline-green sm" onclick="retrieveAddedBeneficiariesAfterPayment()">
                 🔄 Retrieve Added Beneficiaries
               </button>
             </div>
-            <div id="dashboardBeneficiariesListBox" class="olowo-transactions-box" style="padding:16px;">
+            <div id="dashboardBeneficiariesListBox" class="olowo-transactions-box" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
               <div class="no-transfers-empty">No beneficiaries retrieved yet. Complete a payment to automatically retrieve added beneficiaries from MITO.</div>
             </div>
           </div>
@@ -1920,10 +1923,13 @@
           <!-- Retrieved Added Beneficiaries Card (Populated automatically after successful payment via GET /api/v1/mito/Beneficiary) -->
           <div id="succRetrievedBeneficiariesCard" class="olowo-summary-card mt-14 hidden" style="border:1.5px solid #86efac;background:#f0fdf4;">
             <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
-              <h4 style="margin:0;color:#14532d;">📋 Retrieved Added Beneficiaries (<code id="succRetrievedBenEndpoint">GET /api/v1/mito/Beneficiary</code>)</h4>
+              <h4 style="margin:0;color:#14532d;display:flex;align-items:center;flex-wrap:wrap;gap:6px;">
+                <span>📋 Retrieved Added Beneficiaries</span>
+                <code id="succRetrievedBenEndpoint" class="endpoint-code-chip">GET /api/v1/mito/Beneficiary</code>
+              </h4>
               <span class="mono-pill" id="succRetrievedBenCountBadge" style="background:#dcfce7;color:#166534;border:1px solid #86efac;">0 Retrieved</span>
             </div>
-            <div id="succRetrievedBeneficiariesList" style="display:flex;flex-direction:column;gap:8px;"></div>
+            <div id="succRetrievedBeneficiariesList" style="display:flex;flex-direction:column;gap:10px;"></div>
           </div>
 
           <div class="olowo-bottom-btn-row mt-24">

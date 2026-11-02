@@ -3454,63 +3454,61 @@ function buildInteractiveBeneficiaryCardsHtml(list, contextPrefix = 'dash') {
         .join('');
 
       return `
-        <div class="tx-history-row" style="border:2px solid ${isSelected ? '#16a34a' : '#bbf7d0'};background:${isSelected ? '#dcfce7' : '#f0fdf4'};border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:10px;align-items:stretch;">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;">
-            <div style="min-width:0;flex:1;">
-              <div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;">
-                <strong style="color:#14532d;font-size:14px;">👤 ${bName}</strong>
-                <span class="mono-pill" style="font-size:11px;">${bId}</span>
-                ${
-                  isSelected
-                    ? `<span class="tx-status-tag SUCCESS" style="background:#16a34a;color:#fff;">✅ Selected for Transfer (Skips Adding Details)</span>`
-                    : `<span class="tx-status-tag SUCCESS">✓ Retrieved Beneficiary</span>`
-                }
-              </div>
-              <div style="font-size:12px;color:#334155;margin-top:4px;line-height:1.45;word-break:break-word;">
-                🏦 <strong>${bankName}</strong> (<code>providerId: ${provId}</code>) · ${b.collectionMode || 'BANKACCOUNT'} · Account: <code>•••• ${acc.slice(-4)}</code> · ${b.receiveCountryIso3 || 'NGA'} (${b.receiveCurrency || 'NGN'})
-              </div>
+        <div class="beneficiary-manage-card ${isSelected ? 'is-selected' : ''}">
+          <div class="ben-card-info">
+            <div class="ben-card-title-row">
+              <strong class="ben-card-name">👤 ${bName}</strong>
+              ${
+                isSelected
+                  ? `<span class="tx-status-tag SUCCESS" style="background:#16a34a;color:#fff;white-space:normal;">✅ Selected for Transfer (Skips Adding Details)</span>`
+                  : `<span class="tx-status-tag SUCCESS" style="white-space:normal;">✓ Retrieved Beneficiary</span>`
+              }
             </div>
-            <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
-              <button
-                type="button"
-                class="${isSelected ? 'olowo-btn-outline-green' : 'olowo-btn-green'} sm"
-                style="padding:6px 12px;font-size:12px;font-weight:700;${isSelected ? 'background:#ffffff;' : ''}"
-                onclick="${isSelected ? 'clearSelectedDashboardBeneficiary()' : `selectExistingDashboardBeneficiary('${bId}')`}"
-              >
-                ${isSelected ? '✕ Deselect Beneficiary' : '✓ Select Beneficiary (Skip Adding Details)'}
-              </button>
-              <button
-                type="button"
-                class="olowo-btn-outline-green sm"
-                style="padding:6px 10px;font-size:12px;background:#fff1f2;color:#be123c;border-color:#fda4af;font-weight:700;"
-                onclick="deleteBeneficiaryOnMito('${bId}')"
-                title="Delete Beneficiary via GET /api/v1/mito/Beneficiaries/DeleteBeneficiary"
-              >
-                🗑️ Delete
-              </button>
+            <div class="mono-pill ben-uuid-pill">${bId}</div>
+            <div class="ben-card-bank-summary">
+              🏦 <strong>${bankName}</strong> · Account: <code>•••• ${acc.slice(-4)}</code> · ${b.collectionMode || 'BANKACCOUNT'} · ${b.receiveCountryIso3 || 'NGA'} (${b.receiveCurrency || 'NGN'})<br/>
+              <span style="font-size:11.5px;color:#475569;">Mapped <code>providerId</code>: <code>${provId}</code></span>
             </div>
           </div>
 
-          <!-- Update Bank / Provider ID Row (POST /api/v1/mito/Beneficiaries/UpdateBeneficiary) -->
-          <div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding-top:8px;border-top:1px dashed #86efac;">
-            <label for="${selectDomId}" style="font-size:11.5px;font-weight:700;color:#166534;margin:0;">
-              🏦 Change Bank (<code>POST /Beneficiaries/UpdateBeneficiary</code>):
-            </label>
-            <select
-              id="${selectDomId}"
-              class="olowo-input"
-              style="flex:1;min-width:190px;height:34px;padding:4px 8px;font-size:12px;background:#ffffff;"
-            >
-              ${optionsHtml}
-            </select>
+          <div class="ben-card-actions">
             <button
               type="button"
-              class="olowo-btn-outline-green sm"
-              style="background:#ffffff;padding:5px 11px;font-size:11.5px;font-weight:700;"
-              onclick="updateBeneficiaryBankOnMito('${bId}', '${selectDomId}')"
+              class="${isSelected ? 'olowo-btn-outline-green' : 'olowo-btn-green'} sm ben-select-btn"
+              onclick="${isSelected ? 'clearSelectedDashboardBeneficiary()' : `selectExistingDashboardBeneficiary('${bId}')`}"
             >
-              💾 Update Bank &amp; Map Provider ID
+              ${isSelected ? '✕ Deselect Beneficiary' : '✓ Select Beneficiary (Skip Adding Details)'}
             </button>
+            <button
+              type="button"
+              class="olowo-btn-danger-outline ben-delete-btn"
+              onclick="deleteBeneficiaryOnMito('${bId}')"
+              title="Delete Beneficiary via GET /api/v1/mito/Beneficiaries/DeleteBeneficiary"
+            >
+              🗑️ Delete
+            </button>
+          </div>
+
+          <!-- Update Bank / Provider ID Row (POST /api/v1/mito/Beneficiaries/UpdateBeneficiary) -->
+          <div class="ben-card-bank-row">
+            <label for="${selectDomId}" class="ben-card-bank-label">
+              🏦 Change Bank (<code>POST /Beneficiaries/UpdateBeneficiary</code>):
+            </label>
+            <div class="ben-card-bank-controls">
+              <select
+                id="${selectDomId}"
+                class="olowo-input ben-card-bank-select"
+              >
+                ${optionsHtml}
+              </select>
+              <button
+                type="button"
+                class="olowo-btn-outline-green sm ben-card-bank-update-btn"
+                onclick="updateBeneficiaryBankOnMito('${bId}', '${selectDomId}')"
+              >
+                💾 Update Bank &amp; Map Provider ID
+              </button>
+            </div>
           </div>
         </div>
       `;
