@@ -1957,14 +1957,17 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
     liveTxData.requiredAction.kyc = null;
   }
 
-  const paymentUrl =
+  const paymentRawLink =
     (paymentAction && paymentAction.link) ||
     (liveTxData && liveTxData.paymentUrl) ||
-    `https://mito-checkout-1cca8e18297e.herokuapp.com?journeyCode=JNY-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
+    `https://mito-checkout-1cca8e18297e.herokuapp.com/?journeyCode=JNY-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
   const paymentJourneyCode =
     (paymentAction && paymentAction.journeyCode) ||
-    (paymentUrl.match(/journeyCode=([^&]+)/) ? paymentUrl.match(/journeyCode=([^&]+)/)[1] : `JNY-${reference}`);
-  const paymentCheckoutUrl = `https://mito-checkout-1cca8e18297e.herokuapp.com/transaction?journeyCode=${encodeURIComponent(paymentJourneyCode)}`;
+    (paymentRawLink.match(/journeyCode=([^&]+)/) ? paymentRawLink.match(/journeyCode=([^&]+)/)[1] : `JNY-${reference}`);
+  const paymentQrUrl = `https://mito-checkout-1cca8e18297e.herokuapp.com/?journeyCode=${encodeURIComponent(paymentJourneyCode)}`;
+  const paymentDirectUrl = `https://mito-checkout-1cca8e18297e.herokuapp.com/retail-transaction/flow?journeyCode=${encodeURIComponent(paymentJourneyCode)}`;
+  const paymentUrl = paymentRawLink;
+  const paymentCheckoutUrl = paymentDirectUrl;
 
   const beneficiaryRawLink =
     (beneficiaryAction && beneficiaryAction.link) ||
@@ -2038,16 +2041,26 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
     beneficiaryLink,
     beneficiaryHostedUrl,
     beneficiaryDirectUrl,
+    beneficiaryStatus: 'PENDING',
+    isBeneficiaryRetryAllowed: true,
+    paymentRawLink,
+    paymentQrUrl,
+    paymentDirectUrl,
     paymentUrl,
     paymentCheckoutUrl,
     loadedActionType: 'beneficiary (requiredAction.beneficiary.link -> QR & Direct Form)',
     requiredActionBeneficiary,
     requiredActionPaymentOnly: paymentAction
-      ? { ...paymentAction, directCheckoutLink: paymentCheckoutUrl }
+      ? {
+          ...paymentAction,
+          qrCodeLink: paymentQrUrl,
+          directCheckoutLink: paymentDirectUrl
+        }
       : {
           journeyCode: paymentJourneyCode,
-          link: paymentUrl,
-          directCheckoutLink: paymentCheckoutUrl,
+          link: paymentRawLink,
+          qrCodeLink: paymentQrUrl,
+          directCheckoutLink: paymentDirectUrl,
           linkToken,
           status: 'Pending'
         },
@@ -2081,6 +2094,9 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
       beneficiaryLink,
       beneficiaryHostedUrl,
       beneficiaryDirectUrl,
+      paymentRawLink,
+      paymentQrUrl,
+      paymentDirectUrl,
       paymentUrl,
       paymentCheckoutUrl,
       requiredAction,
@@ -2211,6 +2227,75 @@ function classifyMitoRedirectPaymentCase(query = {}) {
 
 function handleMitoRedirectCallback(req, res) {
   const tx = findTransactionByQuery(req.query);
+  const rawOrderStatus = String(req.query.orderStatus || req.query.status || '').trim().toUpperCase();
+  const reqJourneyCode = String(req.query.journeyCode || '').trim();
+  const isBeneficiaryCallback =
+    rawOrderStatus === 'BENEFICIARYCOMPLETED' ||
+    (tx && reqJourneyCode && reqJourneyCode === tx.beneficiaryJourneyCode && reqJourneyCode !== tx.paymentJourneyCode);
+
+  if (isBeneficiaryCallback && tx) {
+    const isBenFailed =
+      rawOrderStatus === 'FAILED' ||
+      rawOrderStatus === 'CANCELLED' ||
+      rawOrderStatus === 'CANCELED' ||
+      rawOrderStatus === 'EXPIRED';
+    if (isBenFailed) {
+      tx.beneficiaryStatus = 'FAILED';
+      tx.beneficiaryFailureReason = `Beneficiary journey (${reqJourneyCode || tx.beneficiaryJourneyCode}) returned ${rawOrderStatus}.`;
+      tx.isBeneficiaryRetryAllowed = rawOrderStatus !== 'BLOCKED';
+    } else {
+      tx.beneficiaryStatus = 'COMPLETED';
+      tx.loadedActionType = 'payment (requiredAction.payment.link loaded after Beneficiary completed)';
+    }
+
+    if (req.query.format === 'json') {
+      return res.json({
+        code: 200,
+        responseType: 'Success',
+        message: isBenFailed
+          ? `Beneficiary journey failed (${rawOrderStatus}) — showing fallback page.`
+          : `Beneficiary completed! Transitioning to Payment Link (${tx.paymentQrUrl || tx.paymentUrl}).`,
+        data: {
+          beneficiaryStatus: tx.beneficiaryStatus,
+          isBeneficiaryRetryAllowed: tx.isBeneficiaryRetryAllowed,
+          paymentQrUrl: tx.paymentQrUrl,
+          paymentDirectUrl: tx.paymentDirectUrl,
+          paymentRawLink: tx.paymentRawLink || tx.paymentUrl,
+          transaction: tx
+        }
+      });
+    }
+
+    // If loaded inside the iframe, notify the parent window via postMessage and auto-redirect to the Payment Link (or show fallback)
+    const targetPayUrl = tx.paymentQrUrl || tx.paymentUrl;
+    return res.send(`<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>MITO Beneficiary Callback</title></head>
+<body style="font-family:sans-serif;text-align:center;padding:40px;background:#f8fafc;color:#0f172a;">
+  <script>
+    try {
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage({
+          type: 'BALAD_BENEFICIARY_CALLBACK',
+          status: ${JSON.stringify(tx.beneficiaryStatus)},
+          orderStatus: ${JSON.stringify(rawOrderStatus || 'BENEFICIARYCOMPLETED')},
+          isRetryAllowed: ${JSON.stringify(Boolean(tx.isBeneficiaryRetryAllowed))},
+          failureReason: ${JSON.stringify(tx.beneficiaryFailureReason || '')},
+          transactionId: ${JSON.stringify(tx.transactionId)},
+          paymentJourneyCode: ${JSON.stringify(tx.paymentJourneyCode)},
+          paymentQrUrl: ${JSON.stringify(tx.paymentQrUrl)},
+          paymentDirectUrl: ${JSON.stringify(tx.paymentDirectUrl)},
+          paymentRawLink: ${JSON.stringify(tx.paymentRawLink || tx.paymentUrl)}
+        }, '*');
+      }
+    } catch (e) {}
+    ${!isBenFailed ? `setTimeout(function(){ window.location.replace(${JSON.stringify(targetPayUrl)}); }, 150);` : ''}
+  </script>
+  <h3>${isBenFailed ? 'Beneficiary Step Failed — Opening Fallback Options...' : '✓ Beneficiary Completed! Loading Payment Link...'}</h3>
+</body>
+</html>`);
+  }
+
   const { normalizedStatus, paymentCase, rawMitoOrderStatus } = classifyMitoRedirectPaymentCase(req.query);
   const orderNo = req.query.orderNo || req.query.tnxref || req.query.ref || (tx && tx.reference) || '';
 
@@ -2278,6 +2363,201 @@ app.get('/api/v1/mito/Transactions/:id/live-status', async (req, res) => {
   } catch (err) {
     res.status(500).json({ code: 500, responseType: 'Error', message: err.message });
   }
+});
+
+// Check live Beneficiary Journey status (`requiredAction.beneficiary`) and determine whether to load Payment Link or show Beneficiary Fallback Page
+app.get('/api/v1/mito/Transactions/:id/beneficiary-status', async (req, res) => {
+  const tx = findTransactionByQuery({ transactionId: req.params.id, journeyCode: req.params.id });
+  if (!tx) {
+    return res.status(404).json({ code: 404, responseType: 'Error', message: 'Transaction not found.' });
+  }
+  const benJc = tx.beneficiaryJourneyCode || tx.journeyCode;
+  let liveJourney = null;
+  let liveValidate = null;
+  try {
+    const tokRes = await fetch(`${MITO_STAGING_CONFIG.baseUrl}/auth/Token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ApiKey: 'd2783dc0-0ebc-4980-98ec-6203215f81ec' },
+      body: JSON.stringify({ journeyCode: benJc })
+    }).then(r => r.json());
+    const token = tokRes && tokRes.data && tokRes.data.token ? tokRes.data.token : null;
+    const headers = {
+      ApiKey: 'd2783dc0-0ebc-4980-98ec-6203215f81ec',
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    };
+    const [jRes, vRes] = await Promise.all([
+      fetch(`${MITO_STAGING_CONFIG.baseUrl}/Journey/status?journeyCode=${encodeURIComponent(benJc)}`, { headers }).then(r => r.json()),
+      fetch(`${MITO_STAGING_CONFIG.baseUrl}/HostedPage/ValidateRequest?journeyCode=${encodeURIComponent(benJc)}`, { headers }).then(r => r.json())
+    ]);
+    liveJourney = jRes && jRes.data ? jRes.data : null;
+    liveValidate = vRes && vRes.data ? vRes.data : null;
+
+    if (liveJourney) {
+      const jStatus = String(liveJourney.journeyStatus || '').trim().toUpperCase();
+      const oStatus = String(liveJourney.orderStatus || '').trim().toUpperCase();
+      const benMod = (liveJourney.modules || []).find(
+        m => String(m.journeyModuleCode || m.moduleName || '').toLowerCase() === 'beneficiary'
+      );
+      const mStatus = benMod ? String(benMod.moduleStatus || '').trim().toUpperCase() : '';
+
+      if (
+        jStatus === 'COMPLETED' ||
+        oStatus === 'BENEFICIARYCOMPLETED' ||
+        mStatus === 'COMPLETED' ||
+        (liveValidate && liveValidate.beneficiary && liveValidate.beneficiary.beneficiaryId)
+      ) {
+        tx.beneficiaryStatus = 'COMPLETED';
+        if (liveValidate && liveValidate.beneficiary) {
+          tx.beneficiaryId = liveValidate.beneficiary.beneficiaryId;
+          tx.beneficiaryName =
+            `${liveValidate.beneficiary.firstName || ''} ${liveValidate.beneficiary.lastName || ''}`.trim() ||
+            tx.beneficiaryName;
+        }
+      } else if (
+        jStatus === 'FAILED' ||
+        jStatus === 'CANCELLED' ||
+        jStatus === 'EXPIRED' ||
+        mStatus === 'FAILED' ||
+        mStatus === 'CANCELLED' ||
+        mStatus === 'EXPIRED'
+      ) {
+        tx.beneficiaryStatus = 'FAILED';
+        tx.beneficiaryFailureReason = `MITO Beneficiary Journey (${benJc}) status is ${mStatus || jStatus}.`;
+        tx.isBeneficiaryRetryAllowed = true;
+      }
+    }
+  } catch (_) {}
+
+  res.json({
+    code: 200,
+    responseType: 'Success',
+    data: {
+      transactionId: tx.transactionId,
+      beneficiaryJourneyCode: benJc,
+      paymentJourneyCode: tx.paymentJourneyCode,
+      beneficiaryStatus: tx.beneficiaryStatus || 'PENDING',
+      isCompleted: tx.beneficiaryStatus === 'COMPLETED',
+      isFailed: tx.beneficiaryStatus === 'FAILED',
+      isRetryAllowed: tx.isBeneficiaryRetryAllowed !== false,
+      failureReason: tx.beneficiaryFailureReason || null,
+      paymentQrUrl: tx.paymentQrUrl,
+      paymentDirectUrl: tx.paymentDirectUrl,
+      paymentRawLink: tx.paymentRawLink || tx.paymentUrl,
+      liveJourney,
+      liveValidate
+    }
+  });
+});
+
+// Handle Beneficiary Completion, Failure (with/without Retry Allowed), or Retry (Re-adding Beneficiary Details)
+app.post('/api/v1/mito/Transactions/BeneficiaryOutcome', (req, res) => {
+  const {
+    transactionId,
+    outcome = 'COMPLETED', // 'COMPLETED' | 'FAILED_RETRY_ALLOWED' | 'FAILED_NO_RETRY' | 'RETRY_BENEFICIARY'
+    failureReason = ''
+  } = req.body;
+
+  const tx = findTransactionByQuery({ transactionId }) || Array.from(TRANSACTIONS.values()).slice(-1)[0];
+  if (!tx) {
+    return res.status(404).json({ code: 404, responseType: 'Error', message: 'Transaction not found.' });
+  }
+
+  if (outcome === 'COMPLETED') {
+    tx.beneficiaryStatus = 'COMPLETED';
+    tx.beneficiaryFailureReason = null;
+    tx.loadedActionType = 'payment (requiredAction.payment.link loaded after Beneficiary completed)';
+    return res.json({
+      code: 200,
+      responseType: 'Success',
+      message: `Beneficiary completed for ${tx.transactionId}! Loading Payment Link (${tx.paymentQrUrl || tx.paymentUrl}).`,
+      data: {
+        beneficiaryStatus: 'COMPLETED',
+        isCompleted: true,
+        isFailed: false,
+        paymentJourneyCode: tx.paymentJourneyCode,
+        paymentQrUrl: tx.paymentQrUrl,
+        paymentDirectUrl: tx.paymentDirectUrl,
+        paymentRawLink: tx.paymentRawLink || tx.paymentUrl,
+        transaction: tx
+      }
+    });
+  }
+
+  if (outcome === 'RETRY_BENEFICIARY') {
+    tx.beneficiaryStatus = 'PENDING';
+    tx.beneficiaryFailureReason = null;
+    tx.isBeneficiaryRetryAllowed = true;
+    tx.loadedActionType = 'beneficiary (Retry: re-adding beneficiary details)';
+    return res.json({
+      code: 200,
+      responseType: 'Success',
+      message: `Beneficiary retry initiated for ${tx.transactionId}. Loading Beneficiary Link (${tx.beneficiaryQrUrl}) to add details again.`,
+      data: {
+        beneficiaryStatus: 'PENDING',
+        isCompleted: false,
+        isFailed: false,
+        isRetryAllowed: true,
+        beneficiaryJourneyCode: tx.beneficiaryJourneyCode,
+        beneficiaryQrUrl: tx.beneficiaryQrUrl,
+        beneficiaryDirectUrl: tx.beneficiaryDirectUrl,
+        beneficiaryRawLink: tx.beneficiaryRawLink,
+        transaction: tx
+      }
+    });
+  }
+
+  const retryAllowed = outcome !== 'FAILED_NO_RETRY';
+  tx.beneficiaryStatus = 'FAILED';
+  tx.isBeneficiaryRetryAllowed = retryAllowed;
+  tx.beneficiaryFailureReason =
+    failureReason ||
+    (retryAllowed
+      ? 'Beneficiary verification or bank account validation could not be completed. You may add the beneficiary details again or abort the transaction.'
+      : 'Beneficiary failed compliance / sanctions screening and retry is not permitted for this transaction. Please abort the transaction and return to the dashboard.');
+
+  return res.json({
+    code: 200,
+    responseType: 'Success',
+    message: `Beneficiary failed (${outcome}). Showing fallback page (isRetryAllowed: ${retryAllowed}).`,
+    data: {
+      beneficiaryStatus: 'FAILED',
+      isCompleted: false,
+      isFailed: true,
+      isRetryAllowed: retryAllowed,
+      failureReason: tx.beneficiaryFailureReason,
+      transaction: tx
+    }
+  });
+});
+
+// Abort Transaction & Return to Dashboard
+app.post('/api/v1/mito/Transactions/Abort', (req, res) => {
+  const { transactionId, reason = 'Aborted by user after beneficiary step' } = req.body;
+  const tx = findTransactionByQuery({ transactionId }) || Array.from(TRANSACTIONS.values()).slice(-1)[0];
+  if (!tx) {
+    return res.status(404).json({ code: 404, responseType: 'Error', message: 'Transaction not found.' });
+  }
+  tx.beneficiaryStatus = 'ABORTED';
+  tx.paymentStatus = 'FAILED';
+  tx.paymentCase = 'CANCELLED';
+  tx.rawMitoOrderStatus = 'ABORTED';
+  tx.abortReason = reason;
+  tx.completedAt = new Date().toISOString();
+
+  res.json({
+    code: 200,
+    responseType: 'Success',
+    message: `Transaction ${tx.transactionId} (Ref: ${tx.reference}) aborted. Returning user to Dashboard.`,
+    data: {
+      transactionId: tx.transactionId,
+      reference: tx.reference,
+      paymentStatus: tx.paymentStatus,
+      paymentCase: tx.paymentCase,
+      rawMitoOrderStatus: tx.rawMitoOrderStatus,
+      abortReason: reason,
+      transaction: tx
+    }
+  });
 });
 
 // ============================================================================

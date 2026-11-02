@@ -2076,6 +2076,9 @@ async function handleConfirmSummaryAndInitiatePayment(options = {}) {
     const benJourneyCode = benAction.journeyCode || txData.beneficiaryJourneyCode || txData.journeyCode || '';
     const payJourneyCode = paymentOnly.journeyCode || txData.paymentJourneyCode || benJourneyCode;
     STATE.journeyCode = benJourneyCode;
+    STATE.beneficiaryJourneyCode = benJourneyCode;
+    STATE.paymentJourneyCode = payJourneyCode;
+    STATE.hostedStage = 'beneficiary';
 
     // Extract the new link from the `requiredAction.beneficiary` object and normalize to `/?journeyCode=...` so the QR code renders immediately!
     STATE.beneficiaryRawLink =
@@ -2093,11 +2096,22 @@ async function handleConfirmSummaryAndInitiatePayment(options = {}) {
       txData.beneficiaryDirectUrl ||
       `https://mito-checkout-1cca8e18297e.herokuapp.com/retail-transaction/flow?journeyCode=${encodeURIComponent(benJourneyCode)}`;
 
-    STATE.paymentUrl = paymentOnly.link || txData.paymentUrl;
-    STATE.paymentCheckoutUrl =
-      txData.paymentCheckoutUrl ||
+    STATE.paymentRawLink =
+      paymentOnly.link ||
+      txData.paymentRawLink ||
+      txData.paymentUrl ||
+      `https://mito-checkout-1cca8e18297e.herokuapp.com/retail-transaction?journeyCode=${encodeURIComponent(payJourneyCode)}`;
+    STATE.paymentQrUrl =
+      paymentOnly.qrCodeLink ||
+      txData.paymentQrUrl ||
+      `https://mito-checkout-1cca8e18297e.herokuapp.com/?journeyCode=${encodeURIComponent(payJourneyCode)}`;
+    STATE.paymentDirectUrl =
       paymentOnly.directCheckoutLink ||
-      `https://mito-checkout-1cca8e18297e.herokuapp.com/transaction?journeyCode=${encodeURIComponent(payJourneyCode)}`;
+      txData.paymentDirectUrl ||
+      txData.paymentCheckoutUrl ||
+      `https://mito-checkout-1cca8e18297e.herokuapp.com/retail-transaction/flow?journeyCode=${encodeURIComponent(payJourneyCode)}`;
+    STATE.paymentUrl = STATE.paymentRawLink;
+    STATE.paymentCheckoutUrl = STATE.paymentDirectUrl;
     STATE.redirectUrl = txData.redirectUrl || customRedirectUrl;
 
     // Update Payment Screen Badges with requiredAction.beneficiary.link, requiredAction.payment.link, and redirectUrl
@@ -2114,16 +2128,23 @@ async function handleConfirmSummaryAndInitiatePayment(options = {}) {
     if (benHostEl) benHostEl.textContent = STATE.beneficiaryRawLink;
     const benUrlLinkEl = document.getElementById('stripBeneficiaryUrlLink');
     if (benUrlLinkEl) benUrlLinkEl.href = STATE.beneficiaryQrUrl;
-    document.getElementById('stripPaymentUrl').textContent = STATE.paymentUrl;
+    document.getElementById('stripPaymentUrl').textContent = STATE.paymentRawLink;
     const payLinkEl = document.getElementById('stripPaymentUrlLink');
-    if (payLinkEl) payLinkEl.href = STATE.paymentUrl || STATE.paymentCheckoutUrl;
+    if (payLinkEl) payLinkEl.href = STATE.paymentQrUrl;
     const openBtnEl = document.getElementById('btnOpenLiveMitoPaymentLink');
     if (openBtnEl) openBtnEl.href = STATE.beneficiaryQrUrl;
     const redirEl = document.getElementById('stripRedirectUrl');
     if (redirEl) redirEl.textContent = STATE.redirectUrl;
 
+    // Ensure Fallback Page is hidden and Iframe Shell is visible on new transaction start
+    hideBeneficiaryFallbackPage();
+    updateBeneficiaryStageBanner('beneficiary_pending');
+
     // Load the working QR Code view (`/?journeyCode=...`) for the `requiredAction.beneficiary` journey directly inside #mitoLivePaymentIframe!
     loadMitoLivePaymentIframe(STATE.beneficiaryQrUrl, 'beneficiary');
+
+    // Start live auto-polling of `GET /api/v1/mito/Transactions/:id/beneficiary-status` so once Beneficiary is completed, we automatically load the Payment Link!
+    startBeneficiaryStatusAutoPolling();
 
     // Open the MITO Hosted Page Screen
     jumpToView('payment');
@@ -2132,14 +2153,260 @@ async function handleConfirmSummaryAndInitiatePayment(options = {}) {
   }
 }
 
+function updateBeneficiaryStageBanner(stageState, extraText = '') {
+  const bar = document.getElementById('beneficiaryStageControlBar');
+  const badge = document.getElementById('beneficiaryStageStatusBadge');
+  const topBadge = document.getElementById('payTopStepBadge');
+  if (!badge) return;
+
+  if (stageState === 'beneficiary_completed') {
+    if (bar) {
+      bar.style.background = '#dcfce7';
+      bar.style.borderColor = '#86efac';
+    }
+    badge.style.color = '#166534';
+    badge.innerHTML = `✅ <strong>Beneficiary Completed!</strong> Automatically loaded <strong>Payment Link (<code>requiredAction.payment.link</code> · Journey: <code>${STATE.paymentJourneyCode || ''}</code>)</strong>`;
+    if (topBadge) {
+      topBadge.textContent = `Step 3B · MITO Hosted Payment Link Loaded (Journey: ${STATE.paymentJourneyCode || ''})`;
+    }
+  } else if (stageState === 'beneficiary_failed') {
+    if (bar) {
+      bar.style.background = '#fee2e2';
+      bar.style.borderColor = '#fca5a5';
+    }
+    badge.style.color = '#991b1b';
+    badge.innerHTML = `❌ <strong>Beneficiary Step Failed:</strong> ${extraText || 'Showing Fallback Page below (Retry or Abort to Dashboard).'}`;
+    if (topBadge) {
+      topBadge.textContent = 'Step 3A · Beneficiary Fallback Page (Retry Beneficiary Details or Abort Transaction)';
+    }
+  } else {
+    if (bar) {
+      bar.style.background = '#eff6ff';
+      bar.style.borderColor = '#bfdbfe';
+    }
+    badge.style.color = '#1e40af';
+    badge.innerHTML = `⏳ <strong>Stage 3A Active (Beneficiary Journey <code>${STATE.beneficiaryJourneyCode || ''}</code>):</strong> Waiting for Beneficiary completion → Will automatically load Payment Link (<code>${STATE.paymentJourneyCode || ''}</code>)`;
+    if (topBadge) {
+      topBadge.textContent = `Step 3A · MITO Hosted Beneficiary Link (${STATE.beneficiaryJourneyCode || ''}) → Payment Link`;
+    }
+  }
+}
+
+function hideBeneficiaryFallbackPage() {
+  const fallbackEl = document.getElementById('beneficiaryFallbackPage');
+  const iframeShell = document.getElementById('mitoLiveIframeShell');
+  if (fallbackEl) fallbackEl.classList.add('hidden');
+  if (iframeShell) iframeShell.classList.remove('hidden');
+}
+
+// Once Beneficiary is completed -> Automatically load the Payment Link (`requiredAction.payment.link`)!
+async function handleBeneficiaryCompletedLoadPaymentLink(skipApiCall = false) {
+  stopBeneficiaryStatusAutoPolling();
+  STATE.hostedStage = 'payment';
+
+  if (!skipApiCall && STATE.transactionId) {
+    await callApi('POST', '/api/v1/mito/Transactions/BeneficiaryOutcome', {
+      transactionId: STATE.transactionId,
+      outcome: 'COMPLETED'
+    });
+  }
+
+  hideBeneficiaryFallbackPage();
+  updateBeneficiaryStageBanner('beneficiary_completed');
+
+  const jnyEl = document.getElementById('stripJourneyCode');
+  if (jnyEl && STATE.paymentJourneyCode) jnyEl.textContent = STATE.paymentJourneyCode;
+  const openBtnEl = document.getElementById('btnOpenLiveMitoPaymentLink');
+  if (openBtnEl) openBtnEl.href = STATE.paymentQrUrl || STATE.paymentUrl;
+
+  // Load the Payment Link (`requiredAction.payment.link`, normalized to `/?journeyCode=<paymentJourneyCode>` so QR renders cleanly)
+  const targetPaymentUrl =
+    STATE.paymentQrUrl ||
+    STATE.paymentUrl ||
+    `https://mito-checkout-1cca8e18297e.herokuapp.com/?journeyCode=${encodeURIComponent(STATE.paymentJourneyCode || STATE.journeyCode || '')}`;
+  loadMitoLivePaymentIframe(targetPaymentUrl, 'paymentQr');
+}
+
+// In case Beneficiary fails -> Show Fallback Page & Message, and if allowed, allow user to add details again OR abort transaction & land on Dashboard
+async function handleBeneficiaryFailedShowFallback(isRetryAllowed = true, customMessage = '', skipApiCall = false) {
+  stopBeneficiaryStatusAutoPolling();
+  STATE.hostedStage = 'beneficiary_failed';
+  STATE.isBeneficiaryRetryAllowed = Boolean(isRetryAllowed);
+
+  let resolvedMessage = customMessage;
+  if (!skipApiCall && STATE.transactionId) {
+    const res = await callApi('POST', '/api/v1/mito/Transactions/BeneficiaryOutcome', {
+      transactionId: STATE.transactionId,
+      outcome: isRetryAllowed ? 'FAILED_RETRY_ALLOWED' : 'FAILED_NO_RETRY',
+      failureReason: customMessage
+    });
+    if (res.ok && res.data && res.data.data && res.data.data.failureReason) {
+      resolvedMessage = res.data.data.failureReason;
+    }
+  }
+
+  if (!resolvedMessage) {
+    resolvedMessage = isRetryAllowed
+      ? 'We could not verify or complete the recipient banking details on the MITO Hosted Page. Since retry is permitted for this transaction, you may click "Add Beneficiary Details Again" to re-enter the recipient details, or click "Abort Transaction & Return to Dashboard".'
+      : 'Beneficiary verification failed compliance / screening checks and retry is not permitted for this transaction. Please abort the transaction to return to the Dashboard.';
+  }
+
+  updateBeneficiaryStageBanner('beneficiary_failed', isRetryAllowed ? 'Retry Allowed' : 'Retry Not Allowed');
+
+  const fallbackEl = document.getElementById('beneficiaryFallbackPage');
+  const iframeShell = document.getElementById('mitoLiveIframeShell');
+  if (iframeShell) iframeShell.classList.add('hidden');
+  if (fallbackEl) fallbackEl.classList.remove('hidden');
+
+  const retryPill = document.getElementById('beneficiaryFallbackRetryPill');
+  if (retryPill) {
+    retryPill.textContent = isRetryAllowed ? 'RETRY ALLOWED' : 'RETRY NOT ALLOWED';
+    retryPill.style.background = isRetryAllowed ? '#dcfce7' : '#fee2e2';
+    retryPill.style.color = isRetryAllowed ? '#166534' : '#991b1b';
+    retryPill.style.borderColor = isRetryAllowed ? '#86efac' : '#fca5a5';
+  }
+
+  const titleEl = document.getElementById('beneficiaryFallbackTitle');
+  if (titleEl) {
+    titleEl.textContent = isRetryAllowed
+      ? 'Beneficiary Step Could Not Be Completed — Add Details Again or Abort'
+      : 'Beneficiary Verification Rejected — Transaction Must Be Aborted';
+  }
+
+  const msgEl = document.getElementById('beneficiaryFallbackMessage');
+  if (msgEl) msgEl.textContent = resolvedMessage;
+
+  const fbTxId = document.getElementById('fallbackTxId');
+  if (fbTxId) fbTxId.textContent = STATE.transactionId || 'TXN-...';
+  const fbJc = document.getElementById('fallbackBenJourneyCode');
+  if (fbJc) fbJc.textContent = STATE.beneficiaryJourneyCode || STATE.journeyCode || 'JNY-...';
+  const fbBank = document.getElementById('fallbackBankName');
+  const selProv = STATE.selectedDroplists.dashProvider || STATE.selectedDroplists.provider;
+  if (fbBank) fbBank.textContent = selProv ? selProv.name : 'Zenith Bank International';
+  const fbAmt = document.getElementById('fallbackAmountSummary');
+  if (fbAmt) {
+    fbAmt.textContent = `${STATE.sendCurrency} ${Number(STATE.sendAmount).toFixed(2)} → ${STATE.receiveCurrency} ${Number(STATE.receiveAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+
+  const retryBtn = document.getElementById('btnRetryBeneficiaryDetails');
+  if (retryBtn) {
+    retryBtn.classList.toggle('hidden', !isRetryAllowed);
+  }
+}
+
+// Allow user to add the beneficiary details again (when retry is allowed)
+async function handleRetryBeneficiaryDetails() {
+  if (STATE.transactionId) {
+    await callApi('POST', '/api/v1/mito/Transactions/BeneficiaryOutcome', {
+      transactionId: STATE.transactionId,
+      outcome: 'RETRY_BENEFICIARY'
+    });
+  }
+  STATE.hostedStage = 'beneficiary';
+  hideBeneficiaryFallbackPage();
+  updateBeneficiaryStageBanner('beneficiary_pending');
+
+  // Open the Direct Beneficiary Form (`/retail-transaction/flow?journeyCode=...`) so the user can immediately re-enter the beneficiary details!
+  const retryUrl =
+    STATE.beneficiaryDirectUrl ||
+    STATE.beneficiaryQrUrl ||
+    `https://mito-checkout-1cca8e18297e.herokuapp.com/retail-transaction/flow?journeyCode=${encodeURIComponent(STATE.beneficiaryJourneyCode || STATE.journeyCode || '')}`;
+  loadMitoLivePaymentIframe(retryUrl, 'beneficiaryForm');
+  startBeneficiaryStatusAutoPolling();
+}
+
+// Abort the transaction and land on the Dashboard
+async function handleAbortTransactionAndReturnToDashboard() {
+  stopBeneficiaryStatusAutoPolling();
+
+  let abortedTx = null;
+  if (STATE.transactionId) {
+    const res = await callApi('POST', '/api/v1/mito/Transactions/Abort', {
+      transactionId: STATE.transactionId,
+      reason: 'Aborted by user from Beneficiary Fallback Page'
+    });
+    if (res.ok && res.data && res.data.data && res.data.data.transaction) {
+      abortedTx = res.data.data.transaction;
+    }
+  }
+
+  const selProv = STATE.selectedDroplists.dashProvider || STATE.selectedDroplists.provider;
+  const record = {
+    transactionId: STATE.transactionId || `TXN-${Date.now()}`,
+    beneficiaryName: (abortedTx && abortedTx.beneficiaryName) || 'Beneficiary Aborted',
+    providerName: (abortedTx && abortedTx.providerName) || (selProv ? selProv.name : 'Zenith Bank International'),
+    sendCurrency: STATE.sendCurrency,
+    sendAmount: STATE.sendAmount,
+    receiveCurrency: STATE.receiveCurrency,
+    receiveAmount: STATE.receiveAmount,
+    status: 'FAILED',
+    paymentCase: 'CANCELLED',
+    rawMitoOrderStatus: 'ABORTED',
+    createdAt: new Date().toLocaleTimeString()
+  };
+
+  STATE.transfers = [record, ...STATE.transfers.filter(t => t.transactionId !== record.transactionId)];
+  renderDashboardTransfers();
+  hideBeneficiaryFallbackPage();
+  jumpToView('dashboard');
+}
+
+function startBeneficiaryStatusAutoPolling() {
+  stopBeneficiaryStatusAutoPolling();
+  if (!STATE.transactionId) return;
+
+  STATE.beneficiaryPollTimerId = setInterval(async () => {
+    if (STATE.currentView !== 'payment' || STATE.hostedStage !== 'beneficiary' || !STATE.transactionId) {
+      return;
+    }
+    try {
+      const r = await fetch(`/api/v1/mito/Transactions/${encodeURIComponent(STATE.transactionId)}/beneficiary-status`);
+      if (!r.ok) return;
+      const json = await r.json();
+      const d = json && json.data ? json.data : null;
+      if (!d) return;
+      if (d.isCompleted) {
+        await handleBeneficiaryCompletedLoadPaymentLink(true);
+      } else if (d.isFailed) {
+        await handleBeneficiaryFailedShowFallback(d.isRetryAllowed !== false, d.failureReason || '', true);
+      }
+    } catch (_) {}
+  }, 3500);
+}
+
+function stopBeneficiaryStatusAutoPolling() {
+  if (STATE.beneficiaryPollTimerId) {
+    clearInterval(STATE.beneficiaryPollTimerId);
+    STATE.beneficiaryPollTimerId = null;
+  }
+}
+
+// Listen for postMessage events from the MITO Hosted iframe (`BALAD_BENEFICIARY_CALLBACK`, `MITO_LINK_SUCCESS`, `MITO_LINK_EXIT`)
+window.addEventListener('message', e => {
+  const msg = e && e.data ? e.data : null;
+  if (!msg || typeof msg !== 'object') return;
+
+  if (msg.type === 'BALAD_BENEFICIARY_CALLBACK') {
+    if (msg.status === 'COMPLETED') {
+      handleBeneficiaryCompletedLoadPaymentLink(true);
+    } else if (msg.status === 'FAILED') {
+      handleBeneficiaryFailedShowFallback(msg.isRetryAllowed !== false, msg.failureReason || '', true);
+    }
+  } else if (msg.type === 'MITO_LINK_SUCCESS' && STATE.hostedStage === 'beneficiary') {
+    handleBeneficiaryCompletedLoadPaymentLink(false);
+  } else if (msg.type === 'MITO_LINK_EXIT' && STATE.hostedStage === 'beneficiary') {
+    const reason = (msg.payload && (msg.payload.reason || msg.payload.status)) || 'Beneficiary step exited or failed';
+    handleBeneficiaryFailedShowFallback(true, `MITO Hosted Page exited (${reason}). You can add the beneficiary details again or abort the transaction.`, false);
+  }
+});
+
 function loadMitoLivePaymentIframe(targetUrl, mode = 'beneficiary') {
   const iframe = document.getElementById('mitoLivePaymentIframe');
   const urlBar = document.getElementById('mitoLiveIframeUrlBar');
   const btnBeneficiary = document.getElementById('btnMitoFrameModeBeneficiary');
   const btnBeneficiaryForm = document.getElementById('btnMitoFrameModeBeneficiaryForm');
-  const btnBeneficiaryRaw = document.getElementById('btnMitoFrameModeBeneficiaryRaw');
+  const btnPaymentQr = document.getElementById('btnMitoFrameModePaymentQr');
   const btnCheckout = document.getElementById('btnMitoFrameModeCheckout');
-  const btnQr = document.getElementById('btnMitoFrameModeQr');
   if (iframe && targetUrl) {
     iframe.src = targetUrl;
   }
@@ -2149,9 +2416,8 @@ function loadMitoLivePaymentIframe(targetUrl, mode = 'beneficiary') {
   const buttons = [
     { el: btnBeneficiary, key: 'beneficiary' },
     { el: btnBeneficiaryForm, key: 'beneficiaryForm' },
-    { el: btnBeneficiaryRaw, key: 'beneficiaryRaw' },
-    { el: btnCheckout, key: 'checkout' },
-    { el: btnQr, key: 'qr' }
+    { el: btnPaymentQr, key: 'paymentQr' },
+    { el: btnCheckout, key: 'checkout' }
   ];
   buttons.forEach(({ el, key }) => {
     if (!el) return;
@@ -2167,31 +2433,29 @@ function loadMitoLivePaymentIframe(targetUrl, mode = 'beneficiary') {
 }
 
 function switchMitoLivePaymentFrameMode(mode) {
+  hideBeneficiaryFallbackPage();
   if (mode === 'beneficiary') {
     const benQrUrl =
       STATE.beneficiaryQrUrl ||
-      `https://mito-checkout-1cca8e18297e.herokuapp.com/?journeyCode=${encodeURIComponent(STATE.journeyCode || '')}`;
+      `https://mito-checkout-1cca8e18297e.herokuapp.com/?journeyCode=${encodeURIComponent(STATE.beneficiaryJourneyCode || STATE.journeyCode || '')}`;
     loadMitoLivePaymentIframe(benQrUrl, 'beneficiary');
   } else if (mode === 'beneficiaryForm') {
     const benFormUrl =
       STATE.beneficiaryDirectUrl ||
-      `https://mito-checkout-1cca8e18297e.herokuapp.com/retail-transaction/flow?journeyCode=${encodeURIComponent(STATE.journeyCode || '')}`;
+      `https://mito-checkout-1cca8e18297e.herokuapp.com/retail-transaction/flow?journeyCode=${encodeURIComponent(STATE.beneficiaryJourneyCode || STATE.journeyCode || '')}`;
     loadMitoLivePaymentIframe(benFormUrl, 'beneficiaryForm');
-  } else if (mode === 'beneficiaryRaw') {
-    const benRawUrl =
-      STATE.beneficiaryRawLink ||
-      `https://mito-checkout-1cca8e18297e.herokuapp.com/retail-transaction?journeyCode=${encodeURIComponent(STATE.journeyCode || '')}`;
-    loadMitoLivePaymentIframe(benRawUrl, 'beneficiaryRaw');
-  } else if (mode === 'qr') {
-    const qrUrl =
+  } else if (mode === 'paymentQr') {
+    const payQrUrl =
+      STATE.paymentQrUrl ||
       STATE.paymentUrl ||
-      `https://mito-checkout-1cca8e18297e.herokuapp.com/?journeyCode=${encodeURIComponent(STATE.journeyCode || '')}`;
-    loadMitoLivePaymentIframe(qrUrl, 'qr');
+      `https://mito-checkout-1cca8e18297e.herokuapp.com/?journeyCode=${encodeURIComponent(STATE.paymentJourneyCode || STATE.journeyCode || '')}`;
+    loadMitoLivePaymentIframe(payQrUrl, 'paymentQr');
   } else {
     const checkoutUrl =
+      STATE.paymentDirectUrl ||
       STATE.paymentCheckoutUrl ||
       STATE.paymentUrl ||
-      `https://mito-checkout-1cca8e18297e.herokuapp.com/transaction?journeyCode=${encodeURIComponent(STATE.journeyCode || '')}`;
+      `https://mito-checkout-1cca8e18297e.herokuapp.com/retail-transaction/flow?journeyCode=${encodeURIComponent(STATE.paymentJourneyCode || STATE.journeyCode || '')}`;
     loadMitoLivePaymentIframe(checkoutUrl, 'checkout');
   }
 }
