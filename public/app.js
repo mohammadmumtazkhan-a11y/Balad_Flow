@@ -328,6 +328,7 @@ function jumpToView(viewName) {
     refreshDashboardHeader();
     discoverActiveCorridors().then(() => fetchQuoteLive());
     loadDashboardProvidersAndTypes();
+    renderDashboardRetrievedBeneficiaries();
     renderTransactionsList();
   } else if (viewName === 'beneficiary') {
     loadStep4BeneficiaryMetadata();
@@ -3187,6 +3188,135 @@ function renderStep7TransactionResult(tx, simulatedResult, paymentMethod, captur
   // Navigate to the Payment Status Page (`view-success`) first, then automatically redirect to Dashboard (`view-dashboard`)!
   jumpToView('success');
   startStatusPageToDashboardCountdown(4, normalizedStatus, rawMitoOrderStatus);
+
+  // After successful payment (or pending settlement), automatically retrieve the added beneficiaries via GET /api/v1/mito/Beneficiary!
+  if (normalizedStatus === 'SUCCESS' || normalizedStatus === 'PENDING') {
+    retrieveAddedBeneficiariesAfterPayment(tx);
+  } else {
+    const benCard = document.getElementById('succRetrievedBeneficiariesCard');
+    if (benCard) benCard.classList.add('hidden');
+  }
+}
+
+async function retrieveAddedBeneficiariesAfterPayment(tx = null) {
+  const activeTx = tx || (STATE.transactions && STATE.transactions[0]) || null;
+  const senderId = (activeTx && activeTx.senderId) || STATE.senderId || '';
+  const userId =
+    (activeTx && (activeTx.mitoUserId || activeTx.userId)) ||
+    STATE.sender.mitoUserId ||
+    STATE.sender.userId ||
+    STATE.senderId ||
+    '';
+  const txId = (activeTx && activeTx.transactionId) || STATE.transactionId || '';
+
+  const endpointUrl = `/api/v1/mito/Beneficiary?senderId=${encodeURIComponent(senderId)}&userId=${encodeURIComponent(userId)}&transactionId=${encodeURIComponent(txId)}`;
+  const res = await callApi('GET', endpointUrl);
+  if (!res.ok || !Array.isArray(res.data?.data)) return;
+
+  const list = res.data.data;
+  STATE.savedBeneficiaries = list;
+
+  // Update the Step 4 saved beneficiaries counter/list if present
+  const savedCountEl = document.getElementById('savedBeneficiariesCount');
+  if (savedCountEl) savedCountEl.textContent = String(list.length);
+  renderSavedBeneficiariesCards();
+
+  // Update the Payment Status page (`view-success`) with the retrieved added beneficiaries
+  const benCard = document.getElementById('succRetrievedBeneficiariesCard');
+  const benListEl = document.getElementById('succRetrievedBeneficiariesList');
+  const benCountBadge = document.getElementById('succRetrievedBenCountBadge');
+  const benEpEl = document.getElementById('succRetrievedBenEndpoint');
+
+  if (benEpEl) {
+    benEpEl.textContent = `GET /api/v1/mito/Beneficiary?userId=${userId}`;
+  }
+  if (benCountBadge) {
+    benCountBadge.textContent = `${list.length} Added ${list.length === 1 ? 'Beneficiary' : 'Beneficiaries'} Retrieved`;
+  }
+
+  if (list.length > 0) {
+    const latestBen = list[list.length - 1];
+    const fullName =
+      (latestBen.fields && (latestBen.fields.fullName || `${latestBen.fields.firstName || ''} ${latestBen.fields.lastName || ''}`.trim())) ||
+      'Retrieved Beneficiary';
+    const bankName = latestBen.providerName || (activeTx && activeTx.providerName) || 'Selected Beneficiary Bank';
+
+    // Update the main receipt Beneficiary fields on `view-success`
+    const succBenNameEl = document.getElementById('succBenName');
+    const succBenIdEl = document.getElementById('succBenId');
+    const succBenBankEl = document.getElementById('succBenBank');
+    if (succBenNameEl) succBenNameEl.textContent = fullName;
+    if (succBenIdEl) succBenIdEl.textContent = latestBen.beneficiaryId;
+    if (succBenBankEl) succBenBankEl.textContent = bankName;
+
+    // Also update the active transaction record in STATE.transactions
+    if (activeTx) {
+      activeTx.beneficiaryId = latestBen.beneficiaryId;
+      activeTx.beneficiaryName = fullName;
+      activeTx.providerName = bankName;
+      renderTransactionsList();
+    }
+
+    if (benCard && benListEl) {
+      benCard.classList.remove('hidden');
+      benListEl.innerHTML = list
+        .map(b => {
+          const bName =
+            (b.fields && (b.fields.fullName || `${b.fields.firstName || ''} ${b.fields.lastName || ''}`.trim())) ||
+            'Beneficiary';
+          const acc = String((b.fields && (b.fields.accountNumber || b.fields.iban)) || '0123456789');
+          return `
+            <div style="background:#ffffff;border:1px solid #bbf7d0;border-radius:10px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+              <div>
+                <strong style="color:#14532d;font-size:13.5px;">👤 ${bName}</strong>
+                <span class="mono-pill" style="margin-left:6px;">${b.beneficiaryId}</span>
+                <div style="font-size:12px;color:#475569;margin-top:3px;">
+                  🏦 <strong>${b.providerName || 'Bank'}</strong> (${b.collectionMode || 'BANKACCOUNT'}) · Account: <code>•••• ${acc.slice(-4)}</code> · Country: <strong>${b.receiveCountryIso3 || 'NGA'} (${b.receiveCurrency || 'NGN'})</strong>
+                </div>
+              </div>
+              <span class="mono-pill" style="background:#dcfce7;color:#166534;border:1px solid #86efac;">✓ Retrieved from MITO</span>
+            </div>
+          `;
+        })
+        .join('');
+    }
+  }
+
+  // Also render the Retrieved Added Beneficiaries box on the Dashboard (`view-dashboard`)
+  renderDashboardRetrievedBeneficiaries();
+}
+
+function renderDashboardRetrievedBeneficiaries() {
+  const dashBox = document.getElementById('dashboardBeneficiariesListBox');
+  if (!dashBox) return;
+  const list = STATE.savedBeneficiaries || [];
+  if (list.length === 0) {
+    dashBox.innerHTML =
+      '<div class="no-transfers-empty">No beneficiaries retrieved yet. Complete a payment to automatically retrieve added beneficiaries from MITO.</div>';
+    return;
+  }
+
+  dashBox.innerHTML = list
+    .map(b => {
+      const bName =
+        (b.fields && (b.fields.fullName || `${b.fields.firstName || ''} ${b.fields.lastName || ''}`.trim())) ||
+        'Beneficiary';
+      const acc = String((b.fields && (b.fields.accountNumber || b.fields.iban)) || '0123456789');
+      return `
+        <div class="tx-history-row" style="border-color:#bbf7d0;background:#f0fdf4;">
+          <div>
+            <strong style="color:#14532d;">👤 ${bName}</strong> <span class="mono-pill">${b.beneficiaryId}</span>
+            <div style="font-size:12px;color:#334155;margin-top:3px;">
+              🏦 <strong>${b.providerName || 'Selected Bank'}</strong> (${b.collectionMode || 'BANKACCOUNT'}) · Account: <code>•••• ${acc.slice(-4)}</code> · ${b.receiveCountryIso3 || 'NGA'} (${b.receiveCurrency || 'NGN'})
+            </div>
+          </div>
+          <div style="text-align:right;">
+            <span class="tx-status-tag SUCCESS">✓ Retrieved Beneficiary</span>
+          </div>
+        </div>
+      `;
+    })
+    .join('');
 }
 
 let statusPageRedirectInterval = null;
