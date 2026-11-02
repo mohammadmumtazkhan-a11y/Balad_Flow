@@ -1950,14 +1950,17 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
     (paymentUrl.match(/journeyCode=([^&]+)/) ? paymentUrl.match(/journeyCode=([^&]+)/)[1] : `JNY-${reference}`);
   const paymentCheckoutUrl = `https://mito-checkout-1cca8e18297e.herokuapp.com/transaction?journeyCode=${encodeURIComponent(paymentJourneyCode)}`;
 
-  const beneficiaryLink =
+  const beneficiaryRawLink =
     (beneficiaryAction && beneficiaryAction.link) ||
-    `https://mito-checkout-1cca8e18297e.herokuapp.com?journeyCode=${encodeURIComponent((beneficiaryAction && beneficiaryAction.journeyCode) || paymentJourneyCode)}`;
+    `https://mito-checkout-1cca8e18297e.herokuapp.com/?journeyCode=${encodeURIComponent((beneficiaryAction && beneficiaryAction.journeyCode) || paymentJourneyCode)}`;
   const beneficiaryJourneyCode =
     (beneficiaryAction && beneficiaryAction.journeyCode) ||
-    (beneficiaryLink.match(/journeyCode=([^&]+)/) ? beneficiaryLink.match(/journeyCode=([^&]+)/)[1] : paymentJourneyCode);
-  const beneficiaryDirectUrl = `https://mito-checkout-1cca8e18297e.herokuapp.com/beneficiary?journeyCode=${encodeURIComponent(beneficiaryJourneyCode)}`;
-  const beneficiaryHostedUrl = beneficiaryLink;
+    (beneficiaryRawLink.match(/journeyCode=([^&]+)/) ? beneficiaryRawLink.match(/journeyCode=([^&]+)/)[1] : paymentJourneyCode);
+  // Normalize to root `/?journeyCode=...` so the QR code renders immediately even when MITO returns `/retail-transaction?journeyCode=...` with `journeyStatus: "Pending"`
+  const beneficiaryQrUrl = `https://mito-checkout-1cca8e18297e.herokuapp.com/?journeyCode=${encodeURIComponent(beneficiaryJourneyCode)}`;
+  const beneficiaryDirectUrl = `https://mito-checkout-1cca8e18297e.herokuapp.com/retail-transaction/flow?journeyCode=${encodeURIComponent(beneficiaryJourneyCode)}`;
+  const beneficiaryLink = beneficiaryRawLink;
+  const beneficiaryHostedUrl = beneficiaryQrUrl;
 
   // Primary journeyCode & link loaded after transaction submission is the `requiredAction.beneficiary` object's new link!
   const journeyCode = beneficiaryJourneyCode || paymentJourneyCode;
@@ -1968,10 +1971,15 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
     null;
 
   const requiredActionBeneficiary = beneficiaryAction
-    ? { ...beneficiaryAction, directBeneficiaryLink: beneficiaryDirectUrl }
+    ? {
+        ...beneficiaryAction,
+        qrCodeLink: beneficiaryQrUrl,
+        directBeneficiaryLink: beneficiaryDirectUrl
+      }
     : {
         journeyCode: beneficiaryJourneyCode,
-        link: beneficiaryLink,
+        link: beneficiaryRawLink,
+        qrCodeLink: beneficiaryQrUrl,
         directBeneficiaryLink: beneficiaryDirectUrl,
         linkToken,
         status: 'Pending'
@@ -2009,12 +2017,14 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
     exchangeRate: lockedRate.exchangeRate,
     totalCommission: lockedRate.totalCommission,
     totalPayable: lockedRate.totalPayable,
+    beneficiaryRawLink,
+    beneficiaryQrUrl,
     beneficiaryLink,
     beneficiaryHostedUrl,
     beneficiaryDirectUrl,
     paymentUrl,
     paymentCheckoutUrl,
-    loadedActionType: 'beneficiary (requiredAction.beneficiary.link)',
+    loadedActionType: 'beneficiary (requiredAction.beneficiary.link -> QR & Direct Form)',
     requiredActionBeneficiary,
     requiredActionPaymentOnly: paymentAction
       ? { ...paymentAction, directCheckoutLink: paymentCheckoutUrl }
@@ -2036,7 +2046,7 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
   res.json({
     code: 200,
     responseType: 'Success',
-    message: `Hosted Transaction initiated via POST /api/v1/mito/Transactions/InitiateHostedTransaction (beneficiary key omitted)! Loaded requiredAction.beneficiary.link (${beneficiaryLink}) · redirectUrl: ${resolvedRedirectUrl}`,
+    message: `Hosted Transaction initiated via POST /api/v1/mito/Transactions/InitiateHostedTransaction (beneficiary key omitted)! Loaded requiredAction.beneficiary QR link (${beneficiaryQrUrl}) · Raw link: ${beneficiaryRawLink}`,
     stagingCall: stagingResult,
     data: {
       transactionId,
@@ -2050,6 +2060,8 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
       rateId: lockedRate.rateId,
       providerId: realProviderId,
       providerName: matchedProviderObj.name,
+      beneficiaryRawLink,
+      beneficiaryQrUrl,
       beneficiaryLink,
       beneficiaryHostedUrl,
       beneficiaryDirectUrl,

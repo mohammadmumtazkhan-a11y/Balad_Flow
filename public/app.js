@@ -2076,16 +2076,21 @@ async function handleConfirmSummaryAndInitiatePayment(options = {}) {
     const payJourneyCode = paymentOnly.journeyCode || txData.paymentJourneyCode || benJourneyCode;
     STATE.journeyCode = benJourneyCode;
 
-    // Extract the new link from the `requiredAction.beneficiary` object and load THAT link!
-    STATE.beneficiaryHostedUrl =
+    // Extract the new link from the `requiredAction.beneficiary` object and normalize to `/?journeyCode=...` so the QR code renders immediately!
+    STATE.beneficiaryRawLink =
       benAction.link ||
+      txData.beneficiaryRawLink ||
       txData.beneficiaryLink ||
-      txData.beneficiaryHostedUrl ||
-      `https://mito-checkout-1cca8e18297e.herokuapp.com?journeyCode=${encodeURIComponent(benJourneyCode)}`;
+      `https://mito-checkout-1cca8e18297e.herokuapp.com/retail-transaction?journeyCode=${encodeURIComponent(benJourneyCode)}`;
+    STATE.beneficiaryQrUrl =
+      benAction.qrCodeLink ||
+      txData.beneficiaryQrUrl ||
+      `https://mito-checkout-1cca8e18297e.herokuapp.com/?journeyCode=${encodeURIComponent(benJourneyCode)}`;
+    STATE.beneficiaryHostedUrl = STATE.beneficiaryQrUrl;
     STATE.beneficiaryDirectUrl =
       benAction.directBeneficiaryLink ||
       txData.beneficiaryDirectUrl ||
-      `https://mito-checkout-1cca8e18297e.herokuapp.com/beneficiary?journeyCode=${encodeURIComponent(benJourneyCode)}`;
+      `https://mito-checkout-1cca8e18297e.herokuapp.com/retail-transaction/flow?journeyCode=${encodeURIComponent(benJourneyCode)}`;
 
     STATE.paymentUrl = paymentOnly.link || txData.paymentUrl;
     STATE.paymentCheckoutUrl =
@@ -2105,19 +2110,19 @@ async function handleConfirmSummaryAndInitiatePayment(options = {}) {
     const jnyEl = document.getElementById('stripJourneyCode');
     if (jnyEl) jnyEl.textContent = benJourneyCode;
     const benHostEl = document.getElementById('stripBeneficiaryHostedUrl');
-    if (benHostEl) benHostEl.textContent = STATE.beneficiaryHostedUrl;
+    if (benHostEl) benHostEl.textContent = STATE.beneficiaryRawLink;
     const benUrlLinkEl = document.getElementById('stripBeneficiaryUrlLink');
-    if (benUrlLinkEl) benUrlLinkEl.href = STATE.beneficiaryHostedUrl;
+    if (benUrlLinkEl) benUrlLinkEl.href = STATE.beneficiaryQrUrl;
     document.getElementById('stripPaymentUrl').textContent = STATE.paymentUrl;
     const payLinkEl = document.getElementById('stripPaymentUrlLink');
     if (payLinkEl) payLinkEl.href = STATE.paymentUrl || STATE.paymentCheckoutUrl;
     const openBtnEl = document.getElementById('btnOpenLiveMitoPaymentLink');
-    if (openBtnEl) openBtnEl.href = STATE.beneficiaryHostedUrl;
+    if (openBtnEl) openBtnEl.href = STATE.beneficiaryQrUrl;
     const redirEl = document.getElementById('stripRedirectUrl');
     if (redirEl) redirEl.textContent = STATE.redirectUrl;
 
-    // Load the new link from the `requiredAction.beneficiary` object (`requiredAction.beneficiary.link`) directly inside #mitoLivePaymentIframe!
-    loadMitoLivePaymentIframe(STATE.beneficiaryHostedUrl, 'beneficiary');
+    // Load the working QR Code view (`/?journeyCode=...`) for the `requiredAction.beneficiary` journey directly inside #mitoLivePaymentIframe!
+    loadMitoLivePaymentIframe(STATE.beneficiaryQrUrl, 'beneficiary');
 
     // Open the MITO Hosted Page Screen
     jumpToView('payment');
@@ -2131,6 +2136,7 @@ function loadMitoLivePaymentIframe(targetUrl, mode = 'beneficiary') {
   const urlBar = document.getElementById('mitoLiveIframeUrlBar');
   const btnBeneficiary = document.getElementById('btnMitoFrameModeBeneficiary');
   const btnBeneficiaryForm = document.getElementById('btnMitoFrameModeBeneficiaryForm');
+  const btnBeneficiaryRaw = document.getElementById('btnMitoFrameModeBeneficiaryRaw');
   const btnCheckout = document.getElementById('btnMitoFrameModeCheckout');
   const btnQr = document.getElementById('btnMitoFrameModeQr');
   if (iframe && targetUrl) {
@@ -2142,6 +2148,7 @@ function loadMitoLivePaymentIframe(targetUrl, mode = 'beneficiary') {
   const buttons = [
     { el: btnBeneficiary, key: 'beneficiary' },
     { el: btnBeneficiaryForm, key: 'beneficiaryForm' },
+    { el: btnBeneficiaryRaw, key: 'beneficiaryRaw' },
     { el: btnCheckout, key: 'checkout' },
     { el: btnQr, key: 'qr' }
   ];
@@ -2160,19 +2167,24 @@ function loadMitoLivePaymentIframe(targetUrl, mode = 'beneficiary') {
 
 function switchMitoLivePaymentFrameMode(mode) {
   if (mode === 'beneficiary') {
-    const benUrl =
-      STATE.beneficiaryHostedUrl ||
-      `https://mito-checkout-1cca8e18297e.herokuapp.com?journeyCode=${encodeURIComponent(STATE.journeyCode || '')}`;
-    loadMitoLivePaymentIframe(benUrl, 'beneficiary');
+    const benQrUrl =
+      STATE.beneficiaryQrUrl ||
+      `https://mito-checkout-1cca8e18297e.herokuapp.com/?journeyCode=${encodeURIComponent(STATE.journeyCode || '')}`;
+    loadMitoLivePaymentIframe(benQrUrl, 'beneficiary');
   } else if (mode === 'beneficiaryForm') {
     const benFormUrl =
       STATE.beneficiaryDirectUrl ||
-      `https://mito-checkout-1cca8e18297e.herokuapp.com/beneficiary?journeyCode=${encodeURIComponent(STATE.journeyCode || '')}`;
+      `https://mito-checkout-1cca8e18297e.herokuapp.com/retail-transaction/flow?journeyCode=${encodeURIComponent(STATE.journeyCode || '')}`;
     loadMitoLivePaymentIframe(benFormUrl, 'beneficiaryForm');
+  } else if (mode === 'beneficiaryRaw') {
+    const benRawUrl =
+      STATE.beneficiaryRawLink ||
+      `https://mito-checkout-1cca8e18297e.herokuapp.com/retail-transaction?journeyCode=${encodeURIComponent(STATE.journeyCode || '')}`;
+    loadMitoLivePaymentIframe(benRawUrl, 'beneficiaryRaw');
   } else if (mode === 'qr') {
     const qrUrl =
       STATE.paymentUrl ||
-      `https://mito-checkout-1cca8e18297e.herokuapp.com?journeyCode=${encodeURIComponent(STATE.journeyCode || '')}`;
+      `https://mito-checkout-1cca8e18297e.herokuapp.com/?journeyCode=${encodeURIComponent(STATE.journeyCode || '')}`;
     loadMitoLivePaymentIframe(qrUrl, 'qr');
   } else {
     const checkoutUrl =

@@ -1652,10 +1652,13 @@
             </div>
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
               <button type="button" id="btnMitoFrameModeBeneficiary" class="olowo-btn-green sm" onclick="switchMitoLivePaymentFrameMode('beneficiary')" style="font-size:11.5px;padding:5px 10px;">
-                🏦 Beneficiary Link (<code>requiredAction.beneficiary.link</code>)
+                📱 Beneficiary QR Code (<code>/?journeyCode=...</code>)
               </button>
               <button type="button" id="btnMitoFrameModeBeneficiaryForm" class="olowo-btn-outline-green sm" onclick="switchMitoLivePaymentFrameMode('beneficiaryForm')" style="font-size:11.5px;padding:5px 10px;background:#1e293b;color:#e2e8f0;border-color:#475569;">
-                📝 Direct Beneficiary Form (<code>/beneficiary</code>)
+                📝 Direct Beneficiary Form (<code>/retail-transaction/flow</code>)
+              </button>
+              <button type="button" id="btnMitoFrameModeBeneficiaryRaw" class="olowo-btn-outline-green sm" onclick="switchMitoLivePaymentFrameMode('beneficiaryRaw')" style="font-size:11.5px;padding:5px 10px;background:#1e293b;color:#e2e8f0;border-color:#475569;">
+                🔗 Raw <code>requiredAction.beneficiary.link</code>
               </button>
               <button type="button" id="btnMitoFrameModeCheckout" class="olowo-btn-outline-green sm" onclick="switchMitoLivePaymentFrameMode('checkout')" style="font-size:11.5px;padding:5px 10px;background:#1e293b;color:#e2e8f0;border-color:#475569;">
                 💳 Payment Link (<code>requiredAction.payment.link</code>)
