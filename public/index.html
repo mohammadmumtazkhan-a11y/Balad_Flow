@@ -579,34 +579,12 @@
                AND SELECT RECIPIENT BANK (`GET /api/v1/mito/Providers`)
                ================================================================== -->
           <div class="olowo-subcard mt-16" style="background:#ffffff;border:2px solid #86efac;border-radius:16px;padding:18px 20px;box-shadow:0 6px 20px rgba(21,128,61,0.06);">
-            <!-- Existing Beneficiaries Quick-Select, Update Bank & Delete Panel -->
-            <div id="dashExistingBeneficiariesPanel" style="background:#f8fafc;border:1.5px solid #cbd5e1;border-radius:12px;padding:14px 16px;margin-bottom:16px;">
-              <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
-                <h4 style="margin:0;color:#14532d;font-size:15px;">
-                  👤 Saved Beneficiaries
-                </h4>
-                <div style="display:flex;gap:6px;flex-wrap:wrap;">
-                  <button type="button" id="btnClearSelectedBeneficiary" class="olowo-btn-outline-green sm hidden" onclick="clearSelectedDashboardBeneficiary()">
-                    ➕ New Beneficiary
-                  </button>
-                  <button type="button" class="olowo-btn-outline-green sm" onclick="retrieveAddedBeneficiariesAfterPayment()">
-                    🔄 Refresh
-                  </button>
-                </div>
-              </div>
-
-              <!-- Active Selected Beneficiary Banner -->
-              <div id="dashSelectedBeneficiaryBanner" class="hidden" style="background:#dcfce7;border:1.5px solid #22c55e;border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:12.5px;color:#14532d;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-                <div id="dashSelectedBeneficiaryBannerText"></div>
-                <button type="button" class="olowo-btn-outline-green sm" onclick="clearSelectedDashboardBeneficiary()">
-                  ✕ Deselect
-                </button>
-              </div>
-
-              <!-- Cards List for Selecting, Updating Bank, or Deleting Existing Beneficiaries -->
-              <div id="dashQuickBeneficiariesList" style="display:flex;flex-direction:column;gap:8px;">
-                <div class="no-transfers-empty" style="padding:10px;font-size:12px;">Loading saved beneficiaries...</div>
-              </div>
+            <!-- Active Selected Beneficiary Banner (Hidden unless an existing beneficiary is selected) -->
+            <div id="dashSelectedBeneficiaryBanner" class="hidden" style="background:#dcfce7;border:1.5px solid #22c55e;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:12.5px;color:#14532d;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+              <div id="dashSelectedBeneficiaryBannerText"></div>
+              <button type="button" id="btnClearSelectedBeneficiary" class="olowo-btn-outline-green sm" onclick="clearSelectedDashboardBeneficiary()">
+                ✕ Deselect
+              </button>
             </div>
 
             <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;">
