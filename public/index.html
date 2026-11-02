@@ -630,64 +630,6 @@
               </div>
             </div>
 
-            <!-- Source of Funds, Transfer Reason & Payment Narration -->
-            <div class="olowo-grid-2 mt-12">
-              <div class="olowo-field">
-                <label>Source of funds <span class="req-star">*</span></label>
-                <div class="downward-droplist" id="droplist-dashSof">
-                  <button type="button" class="droplist-trigger" onclick="toggleDownwardDroplist('dashSof')">
-                    <span id="droplistSelected-dashSof">Salary</span>
-                    <span class="droplist-chevron">⌄</span>
-                  </button>
-                  <div class="droplist-menu" id="droplistMenu-dashSof">
-                    <div class="droplist-search-wrap">
-                      <input
-                        type="text"
-                        class="droplist-search-input"
-                        id="droplistSearch-dashSof"
-                        placeholder="Search source of funds..."
-                        oninput="filterDownwardDroplist('dashSof', this.value)"
-                      />
-                    </div>
-                    <ul class="droplist-options" id="droplistOptions-dashSof"></ul>
-                  </div>
-                </div>
-              </div>
-
-              <div class="olowo-field">
-                <label>Transfer reason <span class="req-star">*</span></label>
-                <div class="downward-droplist" id="droplist-dashReason">
-                  <button type="button" class="droplist-trigger" onclick="toggleDownwardDroplist('dashReason')">
-                    <span id="droplistSelected-dashReason">For Own Expenditures</span>
-                    <span class="droplist-chevron">⌄</span>
-                  </button>
-                  <div class="droplist-menu" id="droplistMenu-dashReason">
-                    <div class="droplist-search-wrap">
-                      <input
-                        type="text"
-                        class="droplist-search-input"
-                        id="droplistSearch-dashReason"
-                        placeholder="Search transfer reason..."
-                        oninput="filterDownwardDroplist('dashReason', this.value)"
-                      />
-                    </div>
-                    <ul class="droplist-options" id="droplistOptions-dashReason"></ul>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div class="olowo-field mt-10">
-              <label for="dashPaymentNarration">Payment Reference <span class="req-star">*</span></label>
-              <input
-                type="text"
-                id="dashPaymentNarration"
-                class="olowo-input"
-                value="Remittance transfer via Olowo / Balad"
-                placeholder="Payment reference / narration"
-              />
-            </div>
-
             <!-- Action Buttons -->
             <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px;">
               <button
