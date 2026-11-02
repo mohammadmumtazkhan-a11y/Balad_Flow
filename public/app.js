@@ -278,7 +278,7 @@ function switchHighLevelFlowMode(mode) {
       phoneDialCode: '+44',
       phone: '7553039222',
       baseCurrency: 'GBP',
-      dob: '1985-05-02',
+      dob: '1975-05-02',
       buildingNumber: '23',
       street: 'Holland Park',
       address: '23 Holland Park',
@@ -421,7 +421,7 @@ function fillRegistrationPreset(presetKey) {
     setVal('regDialCode', '+44');
     setVal('regPhone', '7553039222');
     setVal('regGender', 'M');
-    setVal('regDob', '1985-05-02');
+    setVal('regDob', '1975-05-02');
     setVal('regBaseCurrency', 'GBP');
     setVal('regEntityType', 'I');
     setVal('regBuildingNumber', '23');
@@ -447,7 +447,7 @@ async function handleRegisterSubmit(event) {
   const phoneDialCode = document.getElementById('regDialCode')?.value || '+44';
   const rawPhone = (document.getElementById('regPhone')?.value || '').replace(/^\+44\s*/, '').trim() || '7553039222';
   const gender = document.getElementById('regGender')?.value || 'M';
-  const dob = (document.getElementById('regDob')?.value || '').trim() || '1985-05-02';
+  const dob = (document.getElementById('regDob')?.value || '').trim() || '1975-05-02';
   const baseCurrency = document.getElementById('regBaseCurrency')?.value || 'GBP';
   const legalEntityType = document.getElementById('regEntityType')?.value || 'I';
   const companyNumber = legalEntityType === 'B' ? (document.getElementById('regCompanyNumber')?.value || '').trim() : null;
@@ -1412,7 +1412,7 @@ async function saveSenderAddressAndOpenMitoKyc() {
   const busNameEl = document.getElementById('senderBusinessNameInput');
   const companyNumber = legalEntityType === 'B' && compNoEl ? compNoEl.value.trim() : null;
   const businessName = legalEntityType === 'B' && busNameEl ? busNameEl.value.trim() : null;
-  const dateOfBirth = document.getElementById('senderDobInput').value.trim() || '1985-05-02';
+  const dateOfBirth = document.getElementById('senderDobInput').value.trim() || '1975-05-02';
   const bldgNoEl = document.getElementById('senderBuildingNumberInput');
   const buildingNumber = (bldgNoEl && bldgNoEl.value.trim()) || '23';
   const subStreet = document.getElementById('senderAddress2Input').value.trim() || '';
@@ -1517,7 +1517,7 @@ async function executeMitoKycNow() {
     senderId: STATE.senderId,
     firstName: document.getElementById('senderFirstNameInput').value.trim() || STATE.sender.firstName || 'David',
     lastName: document.getElementById('senderLastNameInput').value.trim() || STATE.sender.lastName || 'Beckham',
-    dob: document.getElementById('senderDobInput').value.trim() || STATE.sender.dob || '1985-05-02',
+    dob: document.getElementById('senderDobInput').value.trim() || STATE.sender.dob || '1975-05-02',
     address: document.getElementById('senderAddress1Input').value.trim() || STATE.sender.address || '23 Holland Park',
     city: document.getElementById('senderCityInput').value.trim() || STATE.sender.city || 'London',
     postcode: document.getElementById('senderPostcodeInput').value.trim() || STATE.sender.postcode || 'W11 3TD',
