@@ -90,7 +90,7 @@ async function runE2ETests() {
         phoneDialCode: '+44',
         gender: 'M',
         legalEntityType: 'I',
-        dob: '1985-05-02',
+        dob: '1975-05-02',
         birthCountryIso3: 'GBR',
         countryIso3: 'GBR',
         buildingNumber: '23',
@@ -258,6 +258,52 @@ async function runE2ETests() {
       );
     }
     console.log('   ✅ Passed: All 6 Redirect URL callback payment cases verified.\n');
+
+    // =========================================================================
+    // TEST 5: DYNAMIC USERID IN AFFILIATE RATES, UPDATE BENEFICIARY BANK TO UBA,
+    //         SELECT EXISTING BENEFICIARY (SKIP BENEFICIARY STEP), AND DELETE BENEFICIARY
+    // =========================================================================
+    console.log('5️⃣  Testing Dynamic userId Affiliate Rates, UpdateBeneficiary (UBA), Existing Beneficiary Selection & DeleteBeneficiary...');
+
+    // 5A. Dynamic userId in GET /api/v1/mito/Exchange/affiliateRates
+    const affRateRes = await fetch(
+      `${baseUrl}/api/v1/mito/Exchange/affiliateRates?userId=${encodeURIComponent(existingUser.userId)}&FromCountry=GBR&ToCountry=NGA&FromCurrency=GBP&ToCurrency=NGN`
+    ).then(r => r.json());
+    assert.strictEqual(affRateRes.code, 200);
+    assert.strictEqual(affRateRes.calculatedQuote.userId, existingUser.userId, 'affiliateRates must use the dynamic userId');
+    assert.strictEqual(affRateRes.query.userId, existingUser.userId, 'affiliateRates query must record the dynamic userId');
+
+    // 5B. Update Topupnigeria Ltd (529ee99a-77e6-47e3-bb0e-b66ee851a8ee) bank to United Bank for Africa Plc (UBA)
+    const ubaProviderId = 'e3af932a-0326-4b65-b5f4-e8f753a69d4d';
+    const ubaBankName = 'United Bank for Africa Plc (UBA)';
+    const updBenRes = await fetch(`${baseUrl}/api/v1/mito/Beneficiaries/UpdateBeneficiary`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        beneficiaryId: '529ee99a-77e6-47e3-bb0e-b66ee851a8ee',
+        userId: existingUser.userId,
+        providerId: ubaProviderId,
+        providerName: ubaBankName,
+        bankName: ubaBankName
+      })
+    }).then(r => r.json());
+    assert.strictEqual(updBenRes.code, 200);
+    assert.strictEqual(updBenRes.data.providerId, ubaProviderId);
+    assert.strictEqual(updBenRes.data.providerName, ubaBankName);
+
+    // 5C. InitiateHostedTransaction with existing beneficiaryId skips Beneficiary step and loads Payment link directly
+    assert.strictEqual(initExistingTxRes.data.skipBeneficiaryHostedStep, true, 'Selecting existing beneficiary must set skipBeneficiaryHostedStep: true');
+
+    // 5D. Delete temporary beneficiary created in Test 2E
+    if (createBenRes.data.beneficiaryId && createBenRes.data.beneficiaryId !== '529ee99a-77e6-47e3-bb0e-b66ee851a8ee') {
+      const delBenRes = await fetch(
+        `${baseUrl}/api/v1/mito/Beneficiary/${encodeURIComponent(createBenRes.data.beneficiaryId)}`,
+        { method: 'DELETE' }
+      ).then(r => r.json());
+      assert.strictEqual(delBenRes.code, 200);
+      assert.strictEqual(delBenRes.data.deleted, true);
+    }
+    console.log('   ✅ Passed: Dynamic userId rates, UpdateBeneficiary (UBA), Existing Beneficiary Selection & DeleteBeneficiary verified.\n');
 
     console.log('🎉 ALL BALAD × MITO E2E TESTS PASSED SUCCESSFULLY!');
   } finally {
