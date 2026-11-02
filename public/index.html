@@ -104,10 +104,7 @@
     </div>
 
     <div class="rlw-actions">
-      <button type="button" class="rlw-btn-sim-expire" onclick="simulateRateExpiryIn3Seconds()" title="Fast-forward countdown to 00:03 to test automatic redirect to Rate & Corridor screen">
-        ⏱️ Test Expiry (3s → Redirect)
-      </button>
-      <button type="button" class="rlw-btn-relock" onclick="lockExchangeRateAfterRateScreen()">
+      <button type="button" class="rlw-btn-relock" style="width:100%;" onclick="lockExchangeRateAfterRateScreen()">
         🔄 Re-lock Rate
       </button>
     </div>
@@ -1520,59 +1517,19 @@
           <div class="corridor-chip-sm hidden" id="payRateIdBadge">RATE-...</div>
         </div>
 
-        <!-- Concise Hosted Transaction Controls -->
-        <div class="mito-api-status-strip mb-14" style="flex-direction:column;align-items:stretch;gap:8px;">
-          <div class="hidden">
-            <strong id="stripTxId"></strong>
-            <strong id="stripMitoRef"></strong>
-            <strong id="stripProviderName"></strong>
-            <code id="stripJourneyCode"></code>
-            <code id="stripRateId"></code>
-            <a id="stripBeneficiaryUrlLink" href="https://mito-checkout-1cca8e18297e.herokuapp.com"><code id="stripBeneficiaryHostedUrl"></code></a>
-            <a id="stripPaymentUrlLink" href="https://mito-checkout-1cca8e18297e.herokuapp.com"><code id="stripPaymentUrl"></code></a>
-            <code id="stripRedirectUrl"></code>
-            <a id="btnOpenLiveMitoPaymentLink" href="https://mito-checkout-1cca8e18297e.herokuapp.com"></a>
-          </div>
-
-          <!-- Beneficiary -> Payment Progression & Fallback Controls Bar -->
-          <div id="beneficiaryStageControlBar" class="mito-redirect-sim-bar" style="margin-top:2px;flex-wrap:wrap;gap:6px;background:#eff6ff;border:1px solid #bfdbfe;padding:8px 12px;border-radius:8px;">
-            <span id="beneficiaryStageStatusBadge" style="font-weight:700;color:#1e40af;">
-              ⏳ Waiting for Beneficiary Completion...
-            </span>
-            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-left:auto;">
-              <button type="button" class="olowo-btn-green sm" onclick="handleBeneficiaryCompletedLoadPaymentLink()">
-                ✅ Beneficiary Completed → Payment
-              </button>
-              <button type="button" class="olowo-btn-amber sm" onclick="handleBeneficiaryFailedShowFallback(true)">
-                ⚠️ Failed (Retry Allowed)
-              </button>
-              <button type="button" class="olowo-btn-red sm" onclick="handleBeneficiaryFailedShowFallback(false)">
-                ❌ Failed (No Retry)
-              </button>
-            </div>
-          </div>
-
-          <!-- Quick Redirect URL Callback Bar -->
-          <div class="mito-redirect-sim-bar" style="margin-top:2px;flex-wrap:wrap;gap:6px;">
-            <span>Simulate Payment Result:</span>
-            <button type="button" class="olowo-btn-green sm" onclick="completePaymentAndRedirect('READYTOPROCESS')">
-              ✅ Paid (Success)
-            </button>
-            <button type="button" class="olowo-btn-amber sm" onclick="completePaymentAndRedirect('AWAITINGPAYMENT')">
-              🏦 Bank Transfer
-            </button>
-            <button type="button" class="olowo-btn-amber sm" onclick="completePaymentAndRedirect('INREVIEW')">
-              ⏳ In Process
-            </button>
-            <button type="button" class="olowo-btn-red sm" onclick="completePaymentAndRedirect('CANCELLED')">
-              🚫 Cancelled
-            </button>
-            <button type="button" class="olowo-btn-red sm" onclick="completePaymentAndRedirect('EXPIRED')">
-              ⌛ Expired
-            </button>
-            <button type="button" class="olowo-btn-red sm" onclick="completePaymentAndRedirect('FAILED')">
-              ❌ Failed
-            </button>
+        <!-- Hidden internal telemetry holders -->
+        <div class="hidden" style="display:none !important;">
+          <strong id="stripTxId"></strong>
+          <strong id="stripMitoRef"></strong>
+          <strong id="stripProviderName"></strong>
+          <code id="stripJourneyCode"></code>
+          <code id="stripRateId"></code>
+          <a id="stripBeneficiaryUrlLink" href="https://mito-checkout-1cca8e18297e.herokuapp.com"><code id="stripBeneficiaryHostedUrl"></code></a>
+          <a id="stripPaymentUrlLink" href="https://mito-checkout-1cca8e18297e.herokuapp.com"><code id="stripPaymentUrl"></code></a>
+          <code id="stripRedirectUrl"></code>
+          <a id="btnOpenLiveMitoPaymentLink" href="https://mito-checkout-1cca8e18297e.herokuapp.com"></a>
+          <div id="beneficiaryStageControlBar">
+            <span id="beneficiaryStageStatusBadge"></span>
           </div>
         </div>
 
@@ -1689,29 +1646,6 @@
         </div>
 
         <div class="olowo-fullscreen-card success-page-card" id="succPageCard">
-          <!-- Interactive Redirect URL Payment Cases Bar right on the Redirect URL Page -->
-          <div class="mito-redirect-sim-bar mb-14" style="flex-wrap:wrap;gap:6px;justify-content:center;">
-            <span style="font-weight:700;">Switch Redirect URL Payment Case (<code>/remittances/callback</code>):</span>
-            <button type="button" class="olowo-btn-green sm" onclick="completePaymentAndRedirect('READYTOPROCESS')">
-              ✅ Paid (<code>READYTOPROCESS</code>)
-            </button>
-            <button type="button" class="olowo-btn-amber sm" onclick="completePaymentAndRedirect('AWAITINGPAYMENT')">
-              🏦 Awaiting Bank Transfer (<code>AWAITINGPAYMENT</code>)
-            </button>
-            <button type="button" class="olowo-btn-amber sm" onclick="completePaymentAndRedirect('INREVIEW')">
-              ⏳ In Review / Pending (<code>INREVIEW</code>)
-            </button>
-            <button type="button" class="olowo-btn-red sm" onclick="completePaymentAndRedirect('CANCELLED')">
-              🚫 Cancelled (<code>CANCELLED</code>)
-            </button>
-            <button type="button" class="olowo-btn-red sm" onclick="completePaymentAndRedirect('EXPIRED')">
-              ⌛ Expired (<code>EXPIRED</code>)
-            </button>
-            <button type="button" class="olowo-btn-red sm" onclick="completePaymentAndRedirect('FAILED')">
-              ❌ Failed (<code>FAILED</code>)
-            </button>
-          </div>
-
           <!-- Redirect URL Bar showing captured query parameters -->
           <div class="redirect-url-bar">
             <span class="lock-icon">🔒</span>
