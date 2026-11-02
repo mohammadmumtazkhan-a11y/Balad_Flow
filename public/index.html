@@ -1599,16 +1599,17 @@
         <!-- API Lock & Hosted Transaction Strip -->
         <div class="mito-api-status-strip mb-14" style="flex-direction:column;align-items:stretch;gap:8px;">
           <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
-            <span class="api-badge-ok">✓ <code>POST /api/v1/mito/Transactions/InitiateHostedTransaction</code> (<strong id="stripTxId">TXN-...</strong> · Ref: <strong id="stripMitoRef">102321</strong>)</span>
-            <span class="api-badge-ok">✓ Bank: <strong id="stripProviderName">Zenith Bank International</strong> · Journey: <code id="stripJourneyCode">JNY-...</code> · Rate: <code id="stripRateId">RATE-...</code></span>
+            <span class="api-badge-ok">✓ <code>POST /api/v1/mito/Transactions/InitiateHostedTransaction</code> (<code>beneficiary</code> key omitted · <strong id="stripTxId">TXN-...</strong> · Ref: <strong id="stripMitoRef">102321</strong>)</span>
+            <span class="api-badge-ok">✓ Bank: <strong id="stripProviderName">Zenith Bank International</strong> · Beneficiary Journey: <code id="stripJourneyCode">JNY-...</code> · Rate: <code id="stripRateId">RATE-...</code></span>
           </div>
           <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;background:#f8fafc;padding:8px 12px;border-radius:8px;border:1px solid #cbd5e1;">
             <div style="font-size:12px;color:#1e293b;word-break:break-all;">
-              <div><strong>MITO Hosted Transaction Link:</strong> <a id="stripPaymentUrlLink" href="https://mito-checkout-1cca8e18297e.herokuapp.com" target="_blank" rel="noopener" style="color:#2563eb;font-weight:700;text-decoration:underline;"><code id="stripPaymentUrl">https://mito-checkout-1cca8e18297e.herokuapp.com/transaction?journeyCode=JNY-...</code></a></div>
+              <div><strong>Loaded Beneficiary Hosted Link (<code>requiredAction.beneficiary.link</code>):</strong> <a id="stripBeneficiaryUrlLink" href="https://mito-checkout-1cca8e18297e.herokuapp.com" target="_blank" rel="noopener" style="color:#15803d;font-weight:700;text-decoration:underline;"><code id="stripBeneficiaryHostedUrl">https://mito-checkout-1cca8e18297e.herokuapp.com?journeyCode=JNY-...</code></a></div>
+              <div style="margin-top:4px;"><strong>Payment Hosted Link (<code>requiredAction.payment.link</code>):</strong> <a id="stripPaymentUrlLink" href="https://mito-checkout-1cca8e18297e.herokuapp.com" target="_blank" rel="noopener" style="color:#2563eb;font-weight:600;text-decoration:underline;"><code id="stripPaymentUrl">https://mito-checkout-1cca8e18297e.herokuapp.com?journeyCode=JNY-...</code></a></div>
               <div style="margin-top:4px;color:#475569;"><strong>Return Redirect URL (<code>redirectUrl</code>):</strong> <code id="stripRedirectUrl">http://localhost:3000/remittances/callback</code></div>
             </div>
             <a id="btnOpenLiveMitoPaymentLink" href="https://mito-checkout-1cca8e18297e.herokuapp.com" target="_blank" rel="noopener" class="olowo-btn-green sm" style="text-decoration:none;white-space:nowrap;">
-              🔗 Open Live MITO Hosted Page ↗
+              🔗 Open Beneficiary Link (<code>requiredAction.beneficiary.link</code>) ↗
             </a>
           </div>
           <!-- Quick Redirect URL Callback Bar (Tests all 6 MITO Redirect URL payment cases on GET /remittances/callback!) -->
@@ -1635,7 +1636,7 @@
           </div>
         </div>
 
-        <!-- Live Embedded MITO Hosted Page (Continues flow for creating Beneficiary + Required Info + Payment) -->
+        <!-- Live Embedded MITO Hosted Page (Loads requiredAction.beneficiary.link returned by InitiateHostedTransaction) -->
         <div class="mito-live-iframe-shell" style="background:#ffffff;border:2px solid #cbd5e1;border-radius:16px;overflow:hidden;box-shadow:0 12px 32px rgba(15,23,42,0.08);">
           <!-- Live Browser Frame Header -->
           <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;padding:10px 14px;background:#0f172a;color:#f8fafc;border-bottom:1px solid #334155;">
@@ -1646,15 +1647,18 @@
                 <span style="width:10px;height:10px;border-radius:50%;background:#22c55e;"></span>
               </span>
               <span style="font-size:11.5px;background:#1e293b;color:#38bdf8;padding:4px 10px;border-radius:6px;font-family:'JetBrains Mono',monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:520px;" id="mitoLiveIframeUrlBar">
-                🔒 https://mito-checkout-1cca8e18297e.herokuapp.com/transaction?journeyCode=JNY-...
+                🔒 https://mito-checkout-1cca8e18297e.herokuapp.com?journeyCode=JNY-...
               </span>
             </div>
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-              <button type="button" id="btnMitoFrameModeCheckout" class="olowo-btn-green sm" onclick="switchMitoLivePaymentFrameMode('checkout')" style="font-size:11.5px;padding:5px 10px;">
-                👤+💳 Hosted Full Flow (Create Beneficiary &amp; Pay)
+              <button type="button" id="btnMitoFrameModeBeneficiary" class="olowo-btn-green sm" onclick="switchMitoLivePaymentFrameMode('beneficiary')" style="font-size:11.5px;padding:5px 10px;">
+                🏦 Beneficiary Link (<code>requiredAction.beneficiary.link</code>)
               </button>
-              <button type="button" id="btnMitoFrameModeBeneficiary" class="olowo-btn-outline-green sm" onclick="switchMitoLivePaymentFrameMode('beneficiary')" style="font-size:11.5px;padding:5px 10px;background:#1e293b;color:#e2e8f0;border-color:#475569;">
-                🏦 Hosted Beneficiary Link Only
+              <button type="button" id="btnMitoFrameModeBeneficiaryForm" class="olowo-btn-outline-green sm" onclick="switchMitoLivePaymentFrameMode('beneficiaryForm')" style="font-size:11.5px;padding:5px 10px;background:#1e293b;color:#e2e8f0;border-color:#475569;">
+                📝 Direct Beneficiary Form (<code>/beneficiary</code>)
+              </button>
+              <button type="button" id="btnMitoFrameModeCheckout" class="olowo-btn-outline-green sm" onclick="switchMitoLivePaymentFrameMode('checkout')" style="font-size:11.5px;padding:5px 10px;background:#1e293b;color:#e2e8f0;border-color:#475569;">
+                💳 Payment Link (<code>requiredAction.payment.link</code>)
               </button>
               <button type="button" class="olowo-btn-outline-green sm" onclick="reloadMitoLivePaymentIframe()" style="font-size:11.5px;padding:5px 10px;background:#1e293b;color:#e2e8f0;border-color:#475569;">
                 ↻ Reload

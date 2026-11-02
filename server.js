@@ -1864,7 +1864,7 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
   const sourceOfFundCode = matchedSof.code || 'SALARY';
 
   // Exact request body per MITO InitiateHostedTransaction specification
-  // When beneficiary is not passed, MITO returns a hosted page that continues the flow for creating beneficiary & any required info!
+  // OMIT `beneficiary` / `beneficiaryId` key completely so MITO returns the `requiredAction.beneficiary` object with a new link!
   const mitoTransactionPayload = {
     serviceCode: 'MONEYTRANSFER',
     collectionMode: lockedRate.collectionMode === 'MOBILEMONEY' ? 'BANKACCOUNT' : lockedRate.collectionMode,
@@ -1881,8 +1881,7 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
     reasonCode,
     sourceOfFundCode,
     paymentNarration,
-    webhookUrl,
-    ...(beneficiary && beneficiary.beneficiaryId ? { beneficiaryId: beneficiary.beneficiaryId } : {})
+    webhookUrl
   };
 
   let stagingResult = null;
@@ -1946,13 +1945,37 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
     (paymentAction && paymentAction.link) ||
     (liveTxData && liveTxData.paymentUrl) ||
     `https://mito-checkout-1cca8e18297e.herokuapp.com?journeyCode=JNY-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
-  const journeyCode =
+  const paymentJourneyCode =
     (paymentAction && paymentAction.journeyCode) ||
     (paymentUrl.match(/journeyCode=([^&]+)/) ? paymentUrl.match(/journeyCode=([^&]+)/)[1] : `JNY-${reference}`);
-  const paymentCheckoutUrl = `https://mito-checkout-1cca8e18297e.herokuapp.com/transaction?journeyCode=${encodeURIComponent(journeyCode)}`;
-  const beneficiaryJourneyCode = (beneficiaryAction && beneficiaryAction.journeyCode) || journeyCode;
-  const beneficiaryHostedUrl = `https://mito-checkout-1cca8e18297e.herokuapp.com/beneficiary?journeyCode=${encodeURIComponent(beneficiaryJourneyCode)}`;
-  const linkToken = (paymentAction && paymentAction.linkToken) || (liveTxData && liveTxData.linkToken) || null;
+  const paymentCheckoutUrl = `https://mito-checkout-1cca8e18297e.herokuapp.com/transaction?journeyCode=${encodeURIComponent(paymentJourneyCode)}`;
+
+  const beneficiaryLink =
+    (beneficiaryAction && beneficiaryAction.link) ||
+    `https://mito-checkout-1cca8e18297e.herokuapp.com?journeyCode=${encodeURIComponent((beneficiaryAction && beneficiaryAction.journeyCode) || paymentJourneyCode)}`;
+  const beneficiaryJourneyCode =
+    (beneficiaryAction && beneficiaryAction.journeyCode) ||
+    (beneficiaryLink.match(/journeyCode=([^&]+)/) ? beneficiaryLink.match(/journeyCode=([^&]+)/)[1] : paymentJourneyCode);
+  const beneficiaryDirectUrl = `https://mito-checkout-1cca8e18297e.herokuapp.com/beneficiary?journeyCode=${encodeURIComponent(beneficiaryJourneyCode)}`;
+  const beneficiaryHostedUrl = beneficiaryLink;
+
+  // Primary journeyCode & link loaded after transaction submission is the `requiredAction.beneficiary` object's new link!
+  const journeyCode = beneficiaryJourneyCode || paymentJourneyCode;
+  const linkToken =
+    (beneficiaryAction && beneficiaryAction.linkToken) ||
+    (paymentAction && paymentAction.linkToken) ||
+    (liveTxData && liveTxData.linkToken) ||
+    null;
+
+  const requiredActionBeneficiary = beneficiaryAction
+    ? { ...beneficiaryAction, directBeneficiaryLink: beneficiaryDirectUrl }
+    : {
+        journeyCode: beneficiaryJourneyCode,
+        link: beneficiaryLink,
+        directBeneficiaryLink: beneficiaryDirectUrl,
+        linkToken,
+        status: 'Pending'
+      };
 
   const txRecord = {
     transactionId,
@@ -1961,6 +1984,7 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
     partnerReferenceNumber: (liveTxData && liveTxData.partnerReferenceNumber) || partnerReferenceNumber,
     journeyCode,
     beneficiaryJourneyCode,
+    paymentJourneyCode,
     linkToken,
     senderId: sender.senderId,
     userId: realUserId,
@@ -1969,10 +1993,6 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
     senderEmail: sender.email,
     senderKycStatus: sender.kycStatus,
     senderKycTier: sender.kycTier,
-    beneficiaryId: beneficiary ? beneficiary.beneficiaryId : null,
-    beneficiaryName: beneficiary
-      ? `${beneficiary.fields.firstName || ''} ${beneficiary.fields.lastName || ''}`.trim()
-      : 'Created in MITO Hosted Page',
     providerId: realProviderId,
     providerName: matchedProviderObj.name,
     collectionMode: lockedRate.collectionMode,
@@ -1980,7 +2000,7 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
     reasonName: matchedReason.name,
     sourceOfFundCode,
     sourceOfFundsName: matchedSof.name,
-    relationshipName: beneficiary && beneficiary.relationship ? beneficiary.relationship.name : 'Family',
+    relationshipName: 'Family',
     rateId: lockedRate.rateId,
     sendCurrency: lockedRate.sendCurrency,
     receiveCurrency: lockedRate.receiveCurrency,
@@ -1989,14 +2009,17 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
     exchangeRate: lockedRate.exchangeRate,
     totalCommission: lockedRate.totalCommission,
     totalPayable: lockedRate.totalPayable,
+    beneficiaryLink,
+    beneficiaryHostedUrl,
+    beneficiaryDirectUrl,
     paymentUrl,
     paymentCheckoutUrl,
-    beneficiaryHostedUrl,
-    loadedActionType: beneficiary ? 'payment (requiredAction.payment.link)' : 'beneficiary+payment (MITO Hosted Page)',
+    loadedActionType: 'beneficiary (requiredAction.beneficiary.link)',
+    requiredActionBeneficiary,
     requiredActionPaymentOnly: paymentAction
       ? { ...paymentAction, directCheckoutLink: paymentCheckoutUrl }
       : {
-          journeyCode,
+          journeyCode: paymentJourneyCode,
           link: paymentUrl,
           directCheckoutLink: paymentCheckoutUrl,
           linkToken,
@@ -2013,7 +2036,7 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
   res.json({
     code: 200,
     responseType: 'Success',
-    message: `Hosted Transaction initiated via POST /api/v1/mito/Transactions/InitiateHostedTransaction! MITO Hosted Page (${paymentCheckoutUrl}) ready to continue flow for beneficiary & payment · redirectUrl: ${resolvedRedirectUrl}`,
+    message: `Hosted Transaction initiated via POST /api/v1/mito/Transactions/InitiateHostedTransaction (beneficiary key omitted)! Loaded requiredAction.beneficiary.link (${beneficiaryLink}) · redirectUrl: ${resolvedRedirectUrl}`,
     stagingCall: stagingResult,
     data: {
       transactionId,
@@ -2022,14 +2045,18 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
       partnerReferenceNumber: txRecord.partnerReferenceNumber,
       journeyCode,
       beneficiaryJourneyCode,
+      paymentJourneyCode,
       linkToken,
       rateId: lockedRate.rateId,
       providerId: realProviderId,
       providerName: matchedProviderObj.name,
+      beneficiaryLink,
+      beneficiaryHostedUrl,
+      beneficiaryDirectUrl,
       paymentUrl,
       paymentCheckoutUrl,
-      beneficiaryHostedUrl,
       requiredAction,
+      requiredActionBeneficiary,
       requiredActionPayment: txRecord.requiredActionPaymentOnly,
       redirectUrl: resolvedRedirectUrl,
       transaction: txRecord
