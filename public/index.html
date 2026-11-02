@@ -134,15 +134,6 @@
         </div>
 
         <div class="olowo-auth-card">
-          <div class="mito-api-status-strip mb-14" style="flex-direction:column;align-items:stretch;gap:4px;background:#dcfce7;border:1.5px solid #22c55e;">
-            <div style="font-size:12px;color:#14532d;font-weight:700;">
-              🔁 Flow 2 — Existing Registered User
-            </div>
-            <div style="font-size:11.5px;color:#166534;">
-              <strong>High-Level Flow:</strong> Logs In → Gets Corridors &amp; Rates → Selects Bank (<code>GET /Providers</code>) → Locks Rate (<code>POST /Exchange/rates</code>) → Submits Transaction (<code>POST /Transactions/InitiateHostedTransaction</code>) → MITO Hosted Page Continues Flow (Beneficiary + Payment).
-            </div>
-          </div>
-
           <form id="formLogin" onsubmit="handleLoginSubmit(event)">
             <div class="olowo-field">
               <label for="loginEmail">Email (Existing Registered User)</label>
@@ -213,19 +204,6 @@
         </div>
 
         <div class="olowo-auth-card wide" style="max-width:740px;">
-          <!-- Step 1 Notice: All User/Sender Registration Info in One Form at the Beginning -->
-          <div class="mito-api-status-strip mb-14" style="flex-direction:column;align-items:stretch;gap:6px;background:#f0fdf4;border:1.5px solid #86efac;">
-            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
-              <span class="api-badge-ok">🆕 Step 1: Unified User/Sender Registration (<code>POST /api/olowo/auth/register</code> + <code>POST /api/v1/mito/Users</code>)</span>
-              <button type="button" class="olowo-btn-outline-green sm" onclick="switchHighLevelFlowMode('EXISTING_USER')" style="font-size:11.5px;padding:3px 9px;background:#fff;">
-                🔁 Switch to Existing User Login →
-              </button>
-            </div>
-            <div style="font-size:12px;color:#14532d;line-height:1.45;">
-              <strong>End-to-End Flow:</strong> 1. User Registers (All Sender Info in 1 Form → <code>POST /api/v1/mito/Users</code> returns dynamic <code>userId</code>) → 2. Get Corridors &amp; Rates using dynamic <code>userId</code> (<code>GET /Exchange/corridors</code> + <code>GET /Exchange/affiliateRates?userId=&lt;userId&gt;</code> — not hardcoded) → 3. Select Bank (<code>GET /Providers</code>) → 4. Lock Rate (<code>POST /Exchange/rates</code>) → 5. Submit Transaction (<code>POST /Transactions/InitiateHostedTransaction</code>) → <strong>MITO Hosted Page continues flow for creating Beneficiary &amp; Payment</strong>!
-            </div>
-          </div>
-
           <!-- Preset Test Senders Bar for Quick Testing -->
           <div class="olowo-preset-bar">
             <span class="preset-label">Quick Fill Profile:</span>
