@@ -2031,9 +2031,10 @@ async function handleConfirmSummaryAndInitiatePayment(options = {}) {
     const customRedirectUrl =
       document.getElementById('sumRedirectUrlInput')?.value.trim() ||
       `${window.location.origin || 'http://localhost:3000'}/remittances/callback`;
-    const partnerRef =
-      document.getElementById('sumPartnerRefInput')?.value.trim() ||
-      `OLW-REF-${Date.now()}`;
+    // Always generate a unique PartnerReferenceNumber for every transaction so MITO never returns a cached/expired journey!
+    const partnerRef = `OLW-REF-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`;
+    const partnerRefInput = document.getElementById('sumPartnerRefInput');
+    if (partnerRefInput) partnerRefInput.value = partnerRef;
     const narration =
       document.getElementById('dashPaymentNarration')?.value.trim() ||
       document.getElementById('benPaymentNarration')?.value.trim() ||

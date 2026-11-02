@@ -1829,7 +1829,13 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
   }
 
   const hostOrigin = `${req.protocol}://${req.get('host') || 'localhost:3000'}`;
-  const partnerReferenceNumber = PartnerReferenceNumber || `OLW-REF-${Date.now()}`;
+  const isDuplicateOrStaticPartnerRef =
+    !PartnerReferenceNumber ||
+    PartnerReferenceNumber === 'OLW-REF-20261031' ||
+    Array.from(TRANSACTIONS.values()).some(t => t.partnerReferenceNumber === PartnerReferenceNumber);
+  const partnerReferenceNumber = isDuplicateOrStaticPartnerRef
+    ? `OLW-REF-${Date.now()}-${crypto.randomBytes(2).toString('hex').toUpperCase()}`
+    : PartnerReferenceNumber;
   const resolvedRedirectUrl =
     redirectUrl && !redirectUrl.includes('olowo.app') && !redirectUrl.includes('mito_status=success')
       ? redirectUrl
@@ -1888,11 +1894,17 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
   let liveTxData = null;
   try {
     stagingResult = await callMitoStagingApi('POST', '/Transactions/InitiateHostedTransaction', mitoTransactionPayload, true);
-    if (stagingResult.ok && stagingResult.data && stagingResult.data.data) {
+    if (
+      stagingResult.ok &&
+      stagingResult.data &&
+      stagingResult.data.data &&
+      stagingResult.data.data.status !== 'ABORTED' &&
+      stagingResult.data.data.status !== 'EXPIRED'
+    ) {
       liveTxData = stagingResult.data.data;
     } else {
-      // Fallback retry with verified MITO Staging user + fresh rateId (omitting beneficiaryId when not provided so MITO hosted page continues beneficiary flow)
-      const fallbackUserId = MITO_STAGING_CONFIG.defaultQuoteUserId;
+      // If rateId was already consumed or returned ABORTED/EXPIRED, lock a brand-new 15-minute rateId + unique PartnerReferenceNumber
+      const fallbackUserId = realUserId || MITO_STAGING_CONFIG.defaultQuoteUserId;
       const fallbackRateCall = await callMitoStagingApi('POST', '/exchange/rates', {
         userId: fallbackUserId,
         serviceCode: 'MONEYTRANSFER',
@@ -1901,18 +1913,22 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
         toCountry: 'NGA',
         fromCurrency: 'GBP',
         toCurrency: 'NGN',
-        amount: Number(lockedRate.sendAmount) || 100,
+        amount: Number(lockedRate.sendAmount) || 50,
         direction: 'S',
         providerId: realProviderId
       });
       const fallbackRateId =
         (fallbackRateCall.ok && fallbackRateCall.data && fallbackRateCall.data.data && fallbackRateCall.data.data.rateId) ||
         lockedRate.rateId;
+      lockedRate.rateId = fallbackRateId;
+      LOCKED_RATES.set(fallbackRateId, lockedRate);
+
+      const freshPartnerRef = `OLW-REF-${Date.now()}-${crypto.randomBytes(2).toString('hex').toUpperCase()}`;
       const retryPayload = {
         ...mitoTransactionPayload,
         userId: fallbackUserId,
         rateId: fallbackRateId,
-        PartnerReferenceNumber: `${partnerReferenceNumber}-R`
+        PartnerReferenceNumber: freshPartnerRef
       };
       const retryResult = await callMitoStagingApi('POST', '/Transactions/InitiateHostedTransaction', retryPayload, true);
       if (retryResult.ok && retryResult.data && retryResult.data.data) {
