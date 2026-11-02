@@ -351,10 +351,7 @@ function jumpToView(viewName) {
   } else if (viewName === 'success') {
     stopBeneficiaryStatusAutoPolling();
     stopPaymentStatusAutoPolling();
-    if (rateCountdownInterval) {
-      clearInterval(rateCountdownInterval);
-      rateCountdownInterval = null;
-    }
+    resetDashboardAfterTransactionComplete();
   }
 
   if (viewName !== 'success') {
@@ -369,6 +366,64 @@ function jumpToView(viewName) {
   }
 
   window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function resetDashboardAfterTransactionComplete() {
+  // 1. Stop rate countdown timer and clear all locked rate state
+  if (rateCountdownInterval) {
+    clearInterval(rateCountdownInterval);
+    rateCountdownInterval = null;
+  }
+  STATE.rateId = null;
+  STATE.lockedRate = null;
+  STATE.rateRemainingSeconds = 0;
+  STATE.rateTotalSeconds = 0;
+  STATE.paymentCheckoutUrl = null;
+  STATE.paymentUrl = null;
+  STATE.beneficiaryHostedUrl = null;
+
+  const sideWidget = document.getElementById('rateLockSideWidget');
+  if (sideWidget) {
+    sideWidget.classList.add('hidden');
+    sideWidget.classList.remove('warning', 'danger');
+  }
+
+  // 2. Clear selected recipient (beneficiary) and selected bank/provider so Dashboard starts fresh
+  STATE.selectedDashboardBeneficiaryId = null;
+  STATE.selectedDashboardBeneficiary = null;
+  STATE.beneficiaryId = null;
+  STATE.activeBeneficiary = null;
+  STATE.selectedDroplists.dashProvider = null;
+  STATE.selectedDroplists.provider = null;
+
+  const dashProvLabel = document.getElementById('droplistSelected-dashProvider');
+  if (dashProvLabel) {
+    dashProvLabel.textContent = '-- Select Recipient Bank --';
+    dashProvLabel.style.color = '#64748b';
+  }
+  const provLabel = document.getElementById('droplistSelected-provider');
+  if (provLabel) {
+    provLabel.textContent = '-- Select Recipient Bank --';
+    provLabel.style.color = '#64748b';
+  }
+  const noteBank = document.getElementById('noteSelectedBank');
+  if (noteBank) {
+    noteBank.textContent = 'Select a bank below';
+  }
+  const rlwProv = document.getElementById('rlwProviderVal');
+  if (rlwProv) {
+    rlwProv.textContent = 'Select a bank';
+  }
+
+  // 3. Hide the rate status banner on Dashboard so nothing about a locked rate is shown
+  const pillEl = document.getElementById('dashLockedRateStatusPill');
+  if (pillEl) {
+    pillEl.classList.add('hidden');
+    pillEl.innerHTML = '';
+  }
+
+  updateSelectedDashboardBeneficiaryUi();
+  renderDashboardRetrievedBeneficiaries();
 }
 
 function switchAuthMode(mode) {
@@ -655,11 +710,9 @@ async function loadDashboardProvidersAndTypes() {
       rlwProv.textContent = existingSelected ? existingSelected.name : 'Select a bank';
     }
     const pillEl = document.getElementById('dashLockedRateStatusPill');
-    if (pillEl && !existingSelected) {
-      pillEl.style.background = '#fefce8';
-      pillEl.style.color = '#854d0e';
-      pillEl.style.borderColor = '#fde047';
-      pillEl.innerHTML = `👆 Select a Beneficiary Bank below to lock rate (<strong>${STATE.providers.length}</strong> banks available)`;
+    if (pillEl && (!existingSelected || !STATE.lockedRate)) {
+      pillEl.classList.add('hidden');
+      pillEl.innerHTML = '';
     }
   }
 
@@ -3322,7 +3375,7 @@ function renderStep7TransactionResult(tx, simulatedResult, paymentMethod, captur
         <div>
           <strong style="color:${headColor};">${isSucc ? '✅' : isPend ? '⏳' : '❌'} Latest Redirect Result Captured (<code>${tx.transactionId}</code> — ${rawMitoOrderStatus})</strong>
           <div style="font-size:12.5px;color:#57534e;margin-top:3px;">
-            ${descHtml} · Locked Rate ID: <code>${tx.rateId}</code>
+            ${descHtml}
           </div>
         </div>
         <button type="button" class="olowo-btn-green sm" style="background:${btnBg};" onclick="jumpToView('success')">View Details →</button>
@@ -3747,12 +3800,7 @@ async function selectExistingDashboardBeneficiary(beneficiaryId) {
 }
 
 function clearSelectedDashboardBeneficiary() {
-  STATE.selectedDashboardBeneficiaryId = null;
-  STATE.selectedDashboardBeneficiary = null;
-  STATE.beneficiaryId = null;
-  STATE.activeBeneficiary = null;
-  updateSelectedDashboardBeneficiaryUi();
-  renderDashboardRetrievedBeneficiaries();
+  resetDashboardAfterTransactionComplete();
 
   const alertBanner = document.getElementById('dashAlertBanner');
   const alertText = document.getElementById('dashAlertText');
