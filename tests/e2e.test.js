@@ -273,7 +273,7 @@ async function runE2ETests() {
     assert.strictEqual(affRateRes.calculatedQuote.userId, existingUser.userId, 'affiliateRates must use the dynamic userId');
     assert.strictEqual(affRateRes.query.userId, existingUser.userId, 'affiliateRates query must record the dynamic userId');
 
-    // 5B. Update Topupnigeria Ltd (529ee99a-77e6-47e3-bb0e-b66ee851a8ee) bank to United Bank for Africa Plc (UBA)
+    // 5B. Update Topupnigeria Ltd (529ee99a-77e6-47e3-bb0e-b66ee851a8ee) bank to United Bank for Africa Plc (UBA) & update beneficiary info
     const ubaProviderId = 'e3af932a-0326-4b65-b5f4-e8f753a69d4d';
     const ubaBankName = 'United Bank for Africa Plc (UBA)';
     const updBenRes = await fetch(`${baseUrl}/api/v1/mito/Beneficiaries/UpdateBeneficiary`, {
@@ -282,6 +282,10 @@ async function runE2ETests() {
       body: JSON.stringify({
         beneficiaryId: '529ee99a-77e6-47e3-bb0e-b66ee851a8ee',
         userId: existingUser.userId,
+        firstName: 'Topupnigeria',
+        lastName: 'Ltd',
+        accountNumber: '1018316889',
+        mobileNo: '2348031234568',
         providerId: ubaProviderId,
         providerName: ubaBankName,
         bankName: ubaBankName
@@ -290,6 +294,8 @@ async function runE2ETests() {
     assert.strictEqual(updBenRes.code, 200);
     assert.strictEqual(updBenRes.data.providerId, ubaProviderId);
     assert.strictEqual(updBenRes.data.providerName, ubaBankName);
+    assert.strictEqual(updBenRes.data.fields.firstName, 'Topupnigeria');
+    assert.strictEqual(updBenRes.data.fields.accountNumber, '1018316889');
 
     // 5C. InitiateHostedTransaction with existing beneficiaryId skips Beneficiary step and loads Payment link directly
     assert.strictEqual(initExistingTxRes.data.skipBeneficiaryHostedStep, true, 'Selecting existing beneficiary must set skipBeneficiaryHostedStep: true');
