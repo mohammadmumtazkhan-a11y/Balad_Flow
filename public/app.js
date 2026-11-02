@@ -682,6 +682,9 @@ async function loadDashboardProvidersAndTypes() {
       STATE.relationships.find(r => r.code === 'FAMILY') || STATE.relationships[0];
     populateDownwardDroplist('relationship', STATE.relationships, STATE.selectedDroplists.relationship || defaultRel);
   }
+
+  // Automatically load existing beneficiaries on Dashboard so user can select, edit/update, or delete them right away
+  retrieveAddedBeneficiariesAfterPayment();
 }
 
 function setCollectionMode(mode) {
@@ -3434,13 +3437,19 @@ function buildInteractiveBeneficiaryCardsHtml(list, contextPrefix = 'dash') {
       const bName =
         (b.fields && (b.fields.fullName || `${b.fields.firstName || ''} ${b.fields.lastName || ''}`.trim())) ||
         'Beneficiary';
+      const nameParts = bName.split(/\s+/);
+      const firstNameVal = (b.fields && b.fields.firstName) || nameParts[0] || 'Topupnigeria';
+      const lastNameVal =
+        b.fields && b.fields.lastName !== undefined ? b.fields.lastName : nameParts.slice(1).join(' ') || 'Ltd';
       const acc = String((b.fields && (b.fields.accountNumber || b.fields.iban)) || '1018316889');
+      const phoneVal = String((b.fields && b.fields.phone) || '2348031234568');
       const bankName = b.providerName || 'United Bank for Africa Plc (UBA)';
       const provId = b.providerId || 'e3af932a-0326-4b65-b5f4-e8f753a69d4d';
       const isSelected =
         Boolean(STATE.selectedDashboardBeneficiaryId) &&
         String(STATE.selectedDashboardBeneficiaryId).toLowerCase() === String(bId).toLowerCase();
-      const selectDomId = `benBankSelect-${contextPrefix}-${bId.replace(/[^a-zA-Z0-9_-]/g, '')}`;
+      const domKey = `${contextPrefix}-${bId.replace(/[^a-zA-Z0-9_-]/g, '')}`;
+      const selectDomId = `benBankSelect-${domKey}`;
 
       const optionsHtml = providersList
         .map(p => {
@@ -3479,6 +3488,14 @@ function buildInteractiveBeneficiaryCardsHtml(list, contextPrefix = 'dash') {
             </button>
             <button
               type="button"
+              class="olowo-btn-outline-green sm ben-edit-btn"
+              onclick="toggleBeneficiaryEditForm('${domKey}')"
+              title="Edit & Update Beneficiary Information"
+            >
+              ✏️ Edit Details
+            </button>
+            <button
+              type="button"
               class="olowo-btn-danger-outline ben-delete-btn"
               onclick="deleteBeneficiaryOnMito('${bId}')"
               title="Delete Beneficiary"
@@ -3487,7 +3504,7 @@ function buildInteractiveBeneficiaryCardsHtml(list, contextPrefix = 'dash') {
             </button>
           </div>
 
-          <!-- Update Bank Row -->
+          <!-- Quick Bank Update Row -->
           <div class="ben-card-bank-row">
             <div class="ben-card-bank-controls">
               <select
@@ -3506,10 +3523,127 @@ function buildInteractiveBeneficiaryCardsHtml(list, contextPrefix = 'dash') {
               </button>
             </div>
           </div>
+
+          <!-- Expandable Full Beneficiary Information Update Form -->
+          <div id="benEditForm-${domKey}" class="ben-edit-form-box hidden">
+            <div class="ben-edit-form-title">✏️ Update Beneficiary Information</div>
+            <div class="ben-edit-grid">
+              <div class="olowo-field" style="margin:0;">
+                <label for="benEditFirst-${domKey}">First Name</label>
+                <input type="text" id="benEditFirst-${domKey}" class="olowo-input" value="${firstNameVal.replace(/"/g, '&quot;')}" />
+              </div>
+              <div class="olowo-field" style="margin:0;">
+                <label for="benEditLast-${domKey}">Last Name</label>
+                <input type="text" id="benEditLast-${domKey}" class="olowo-input" value="${lastNameVal.replace(/"/g, '&quot;')}" />
+              </div>
+              <div class="olowo-field" style="margin:0;">
+                <label for="benEditBank-${domKey}">Bank / Provider</label>
+                <select id="benEditBank-${domKey}" class="olowo-input">
+                  ${optionsHtml}
+                </select>
+              </div>
+              <div class="olowo-field" style="margin:0;">
+                <label for="benEditAcc-${domKey}">Account Number</label>
+                <input type="text" id="benEditAcc-${domKey}" class="olowo-input" value="${acc.replace(/"/g, '&quot;')}" />
+              </div>
+              <div class="olowo-field" style="margin:0;">
+                <label for="benEditPhone-${domKey}">Phone Number</label>
+                <input type="text" id="benEditPhone-${domKey}" class="olowo-input" value="${phoneVal.replace(/"/g, '&quot;')}" />
+              </div>
+            </div>
+            <div id="benEditFeedback-${domKey}" class="ben-edit-feedback hidden"></div>
+            <div class="ben-edit-actions">
+              <button
+                type="button"
+                class="olowo-btn-green sm"
+                onclick="saveFullBeneficiaryUpdateOnMito('${bId}', '${domKey}')"
+              >
+                💾 Save Beneficiary Changes
+              </button>
+              <button
+                type="button"
+                class="olowo-btn-outline-green sm"
+                onclick="toggleBeneficiaryEditForm('${domKey}')"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
         </div>
       `;
     })
     .join('');
+}
+
+function toggleBeneficiaryEditForm(domKey) {
+  const formEl = document.getElementById(`benEditForm-${domKey}`);
+  if (formEl) {
+    formEl.classList.toggle('hidden');
+  }
+}
+
+async function saveFullBeneficiaryUpdateOnMito(beneficiaryId, domKey) {
+  const firstEl = document.getElementById(`benEditFirst-${domKey}`);
+  const lastEl = document.getElementById(`benEditLast-${domKey}`);
+  const bankEl = document.getElementById(`benEditBank-${domKey}`);
+  const accEl = document.getElementById(`benEditAcc-${domKey}`);
+  const phoneEl = document.getElementById(`benEditPhone-${domKey}`);
+  const feedbackEl = document.getElementById(`benEditFeedback-${domKey}`);
+
+  const firstName = firstEl ? firstEl.value.trim() : '';
+  const lastName = lastEl ? lastEl.value.trim() : '';
+  const selectedProviderId = bankEl ? bankEl.value : 'e3af932a-0326-4b65-b5f4-e8f753a69d4d';
+  const selectedProviderName =
+    bankEl && bankEl.options[bankEl.selectedIndex]
+      ? bankEl.options[bankEl.selectedIndex].text
+      : 'United Bank for Africa Plc (UBA)';
+  const accountNumber = accEl ? accEl.value.trim() : '';
+  const mobileNo = phoneEl ? phoneEl.value.trim() : '';
+
+  if (feedbackEl) {
+    feedbackEl.classList.remove('hidden');
+    feedbackEl.textContent = 'Saving beneficiary updates...';
+  }
+
+  const userId = STATE.sender.mitoUserId || STATE.sender.userId || STATE.senderId || '';
+  const res = await callApi('POST', '/api/v1/mito/Beneficiaries/UpdateBeneficiary', {
+    beneficiaryId,
+    userId,
+    senderId: STATE.senderId,
+    firstName,
+    lastName,
+    providerId: selectedProviderId,
+    providerName: selectedProviderName,
+    bankName: selectedProviderName,
+    accountNumber,
+    acctNumber: accountNumber,
+    mobileNo
+  });
+
+  if (res.ok && res.data?.data) {
+    const updated = res.data.data;
+    const alertBanner = document.getElementById('dashAlertBanner');
+    const alertText = document.getElementById('dashAlertText');
+    if (alertBanner && alertText) {
+      alertBanner.style.background = '#dcfce7';
+      alertBanner.style.borderColor = '#22c55e';
+      alertBanner.style.color = '#14532d';
+      alertText.innerHTML =
+        `✅ <strong>Beneficiary Information Updated:</strong> ` +
+        `<strong>${updated.fields?.fullName || beneficiaryId}</strong> · 🏦 ${updated.providerName} · Account: <code>•••• ${String(updated.fields?.accountNumber || accountNumber).slice(-4)}</code>`;
+    }
+
+    await retrieveAddedBeneficiariesAfterPayment();
+
+    if (
+      STATE.selectedDashboardBeneficiaryId &&
+      String(STATE.selectedDashboardBeneficiaryId).toLowerCase() === String(beneficiaryId).toLowerCase()
+    ) {
+      await selectExistingDashboardBeneficiary(beneficiaryId);
+    }
+  } else if (feedbackEl) {
+    feedbackEl.textContent = 'Could not update beneficiary details. Please try again.';
+  }
 }
 
 function updateSelectedDashboardBeneficiaryUi() {

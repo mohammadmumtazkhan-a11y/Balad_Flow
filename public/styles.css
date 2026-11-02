@@ -2999,6 +2999,55 @@ body {
   white-space: normal;
 }
 
+.ben-edit-form-box {
+  background: #ffffff;
+  border: 1.5px solid #86efac;
+  border-radius: 12px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  box-sizing: border-box;
+}
+.ben-edit-form-title {
+  font-size: 13px;
+  font-weight: 800;
+  color: #14532d;
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 6px;
+}
+.ben-edit-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  width: 100%;
+}
+.ben-edit-grid .olowo-field label {
+  font-size: 11.5px;
+  margin-bottom: 3px;
+}
+.ben-edit-grid .olowo-input {
+  height: 36px;
+  padding: 6px 10px;
+  font-size: 12.5px;
+}
+.ben-edit-feedback {
+  font-size: 12px;
+  font-weight: 700;
+  color: #166534;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  padding: 6px 10px;
+}
+.ben-edit-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 /* ============================================================================
    COMPREHENSIVE MOBILE PHONE & TABLET UI/UX OPTIMIZATION
    No overflowing, no misalignment, proper spacing, and full symmetry
@@ -3180,12 +3229,29 @@ body {
   }
   .ben-card-actions {
     display: grid;
-    grid-template-columns: 1fr auto;
+    grid-template-columns: 1fr 1fr;
     gap: 8px;
   }
   .ben-card-actions .ben-select-btn {
+    grid-column: 1 / -1;
     width: 100%;
     flex: unset;
+  }
+  .ben-card-actions .ben-edit-btn,
+  .ben-card-actions .ben-delete-btn {
+    width: 100%;
+    justify-content: center;
+  }
+  .ben-edit-grid {
+    grid-template-columns: 1fr;
+  }
+  .ben-edit-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .ben-edit-actions button {
+    width: 100%;
+    justify-content: center;
   }
   .ben-card-bank-controls {
     flex-direction: column;

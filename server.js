@@ -1793,32 +1793,45 @@ async function retrieveAndSyncUserBeneficiaries({ senderId, userId, transactionI
         const raw = { ...summary, ...(detail || {}) };
         const benId = String(raw.beneficiaryId || raw.id || '').trim();
         if (!benId || DELETED_BENEFICIARY_IDS.has(benId.toLowerCase())) continue;
-        const fullName =
+        const savedOverride = UPDATED_BENEFICIARY_OVERRIDES.get(benId.toLowerCase()) || null;
+
+        const rawFullName =
           raw.beneficiaryFullName ||
           `${raw.firstName || ''} ${raw.lastName || ''}`.trim() ||
           raw.companyName ||
           raw.beneficiaryNickname ||
           'MITO Beneficiary';
-        const parts = fullName.split(/\s+/);
-        const firstName = raw.firstName || parts[0] || 'Beneficiary';
-        const lastName = raw.lastName || parts.slice(1).join(' ') || '';
+        const parts = rawFullName.split(/\s+/);
+        const firstName = (savedOverride && savedOverride.firstName) || raw.firstName || parts[0] || 'Beneficiary';
+        const lastName =
+          savedOverride && savedOverride.lastName !== undefined
+            ? savedOverride.lastName
+            : raw.lastName || parts.slice(1).join(' ') || '';
+        const fullName =
+          (savedOverride && savedOverride.fullName) || `${firstName} ${lastName}`.trim() || rawFullName;
 
         // If Topupnigeria beneficiary on MITO Staging still has Zenith Bank in raw.bankName, auto-sync it to UBA
         const isTopupNigeria = fullName.toLowerCase().includes('topupnigeria');
         const effectiveBankName =
-          isTopupNigeria && (!raw.bankName || raw.bankName.toLowerCase().includes('zenith'))
+          (savedOverride && savedOverride.providerName) ||
+          (isTopupNigeria && (!raw.bankName || raw.bankName.toLowerCase().includes('zenith'))
             ? 'United Bank for Africa Plc (UBA)'
-            : raw.bankName;
+            : raw.bankName);
 
         // Match provider by bankName first so POST /Beneficiaries/UpdateBeneficiary bank changes map to the exact Provider ID!
         const resolvedProv = resolveProviderFromBankOrId({
           bankName: effectiveBankName,
-          providerId: raw.providerId,
+          providerId: (savedOverride && savedOverride.providerId) || raw.providerId,
           beneficiaryId: benId,
           fallbackProviderId: tx && tx.providerId,
           fallbackProviderName: tx && tx.providerName
         });
-        const accountNumber = raw.acctNumber || raw.iban || '1018316888';
+        const accountNumber =
+          (savedOverride && savedOverride.accountNumber) || raw.acctNumber || raw.iban || '1018316888';
+        const phoneVal =
+          (savedOverride && savedOverride.phone) ||
+          raw.mobileNo ||
+          '2348031234567';
 
         const existing = findBeneficiaryByIdCaseInsensitive(benId);
         const keyToUse = existing ? existing.beneficiaryId : benId.toLowerCase();
@@ -1836,7 +1849,7 @@ async function retrieveAndSyncUserBeneficiaries({ senderId, userId, transactionI
           providerId: resolvedProv.providerId,
           providerName: resolvedProv.providerName,
           providerCode: resolvedProv.providerCode || (existing && existing.providerCode) || '',
-          beneficiaryNickname: raw.beneficiaryNickname || '',
+          beneficiaryNickname: (savedOverride && savedOverride.beneficiaryNickname) || raw.beneficiaryNickname || '',
           reason: (existing && existing.reason) || MITO_TYPES.reasons[0],
           sourceOfFunds: (existing && existing.sourceOfFunds) || MITO_TYPES.sourceOfFunds[0],
           relationship: (existing && existing.relationship) || MITO_TYPES.relationships[0],
@@ -1846,9 +1859,9 @@ async function retrieveAndSyncUserBeneficiaries({ senderId, userId, transactionI
             lastName,
             fullName,
             accountNumber,
-            phone: raw.mobileNo || ((existing && existing.fields && existing.fields.phone) || '+234 803 123 4567'),
+            phone: phoneVal,
             email: raw.beneficiaryEmailAddress || raw.bankAccountEmail || '',
-            iban: raw.iban || accountNumber,
+            iban: accountNumber,
             swiftBic: raw.bicSwift || ''
           },
           createdAt: raw.createdAt || (existing && existing.createdAt) || new Date().toISOString(),
@@ -1964,6 +1977,8 @@ async function handleUpdateBeneficiary(req, res) {
     acctNumber: requestedAcctNumber,
     firstName: requestedFirstName,
     lastName: requestedLastName,
+    mobileNo: requestedMobileNo,
+    phone: requestedPhone,
     beneficiaryNickname: requestedNickname
   } = req.body || {};
 
@@ -1997,31 +2012,41 @@ async function handleUpdateBeneficiary(req, res) {
     (existing && (existing.mitoUserId || existing.senderId)) ||
     'be6b86a7-8484-43df-9af6-09a1d871b8a1';
 
+  const prevOverride = UPDATED_BENEFICIARY_OVERRIDES.get(beneficiaryId.toLowerCase()) || null;
+
   const firstName =
-    requestedFirstName ||
-    (liveDetail && liveDetail.firstName) ||
+    (requestedFirstName !== undefined && String(requestedFirstName).trim() !== '' ? String(requestedFirstName).trim() : null) ||
+    (prevOverride && prevOverride.firstName) ||
     (existing && existing.fields && existing.fields.firstName) ||
+    (liveDetail && liveDetail.firstName) ||
     'Topupnigeria';
   const lastName =
-    requestedLastName ||
-    (liveDetail && liveDetail.lastName) ||
-    (existing && existing.fields && existing.fields.lastName) ||
-    'Ltd';
+    requestedLastName !== undefined
+      ? String(requestedLastName).trim()
+      : (prevOverride && prevOverride.lastName !== undefined
+          ? prevOverride.lastName
+          : (existing && existing.fields && existing.fields.lastName) || (liveDetail && liveDetail.lastName) || 'Ltd');
+  const fullName = `${firstName} ${lastName}`.trim();
   const beneficiaryNickname =
-    requestedNickname ||
+    (requestedNickname && String(requestedNickname).trim()) ||
+    (prevOverride && prevOverride.beneficiaryNickname) ||
     (liveDetail && liveDetail.beneficiaryNickname) ||
     (existing && existing.beneficiaryNickname) ||
     `${firstName}${lastName}`.replace(/[^a-zA-Z0-9]/g, '').slice(0, 16) ||
     'Beneficiary01';
   const acctNumber =
-    requestedAcctNumber ||
-    requestedAccountNumber ||
-    (liveDetail && liveDetail.acctNumber) ||
+    (requestedAcctNumber && String(requestedAcctNumber).trim()) ||
+    (requestedAccountNumber && String(requestedAccountNumber).trim()) ||
+    (prevOverride && prevOverride.accountNumber) ||
     (existing && existing.fields && existing.fields.accountNumber) ||
+    (liveDetail && liveDetail.acctNumber) ||
     '1018316889';
+  const rawRequestedPhone = requestedMobileNo || requestedPhone || '';
   const mobileNo =
-    (liveDetail && liveDetail.mobileNo) ||
+    (rawRequestedPhone ? String(rawRequestedPhone).replace(/[^0-9]/g, '') : null) ||
+    (prevOverride && prevOverride.phone ? String(prevOverride.phone).replace(/[^0-9]/g, '') : null) ||
     (existing && existing.fields && existing.fields.phone ? String(existing.fields.phone).replace(/[^0-9]/g, '') : null) ||
+    (liveDetail && liveDetail.mobileNo) ||
     '2348031234568';
   const reasonId =
     (liveDetail && liveDetail.reasonId) ||
@@ -2059,8 +2084,14 @@ async function handleUpdateBeneficiary(req, res) {
     stagingResult = { ok: false, error: err.message };
   }
 
-  // Persist the updated providerId & providerName mapping in UPDATED_BENEFICIARY_OVERRIDES & BENEFICIARIES
+  // Persist all updated beneficiary fields in UPDATED_BENEFICIARY_OVERRIDES & BENEFICIARIES
   UPDATED_BENEFICIARY_OVERRIDES.set(beneficiaryId.toLowerCase(), {
+    firstName,
+    lastName,
+    fullName,
+    accountNumber: acctNumber,
+    phone: mobileNo,
+    beneficiaryNickname,
     providerId: resolvedProv.providerId,
     providerName: resolvedProv.providerName,
     providerCode: resolvedProv.providerCode || ''
