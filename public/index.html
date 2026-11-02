@@ -46,20 +46,20 @@
     <div style="display:flex;align-items:center;gap:6px;padding-right:10px;border-right:1.5px solid #cbd5e1;">
       <span class="flow-helper-label" style="font-weight:800;color:#0f172a;">Select Flow:</span>
       <button type="button" id="btnFlowModeNewUser" class="olowo-btn-green sm" onclick="switchHighLevelFlowMode('NEW_USER')" style="font-size:11.5px;padding:5px 10px;">
-        🆕 Flow 1: New User (Register → KYC → Add Beneficiary → Pay)
+        🆕 Flow 1: New User (Register All Info → Corridors &amp; Select Bank → Lock Rate → Submit Txn → MITO Hosted Page)
       </button>
       <button type="button" id="btnFlowModeExistingUser" class="olowo-btn-outline-green sm" onclick="switchHighLevelFlowMode('EXISTING_USER')" style="font-size:11.5px;padding:5px 10px;">
-        🔁 Flow 2: Existing User (Log In → Skip KYC/QR → Select Beneficiary → Pay)
+        🔁 Flow 2: Existing User (Log In → Corridors &amp; Select Bank → Lock Rate → Submit Txn → MITO Hosted Page)
       </button>
     </div>
     <div class="flow-helper-steps">
-      <button type="button" class="flow-pill active" id="flowPillStep1Auth" data-goto="auth" onclick="jumpToView(STATE.flowMode === 'EXISTING_USER' ? 'login' : 'register')">1. Register (New User)</button>
-      <button type="button" class="flow-pill" id="flowPillStep2Rate" data-goto="dashboard" onclick="jumpToView('dashboard')">2. Check &amp; Lock Rate</button>
-      <button type="button" class="flow-pill" id="flowPillStep3Kyc" data-goto="kyc" onclick="jumpToView('kyc')">3. MITO User Data &amp; Pass KYC</button>
-      <button type="button" class="flow-pill" id="flowPillStep4Ben" data-goto="beneficiary" onclick="jumpToView('beneficiary')">4. Add Beneficiary</button>
-      <button type="button" class="flow-pill" id="flowPillStep5Sum" data-goto="summary" onclick="jumpToView('summary')">Summary</button>
-      <button type="button" class="flow-pill" id="flowPillStep6Pay" data-goto="payment" onclick="jumpToView('payment')">5. Make Payment</button>
-      <button type="button" class="flow-pill" id="flowPillStep7" data-goto="success" onclick="jumpToView('success')">6. See Status &amp; Dashboard</button>
+      <button type="button" class="flow-pill active" id="flowPillStep1Auth" data-goto="auth" onclick="jumpToView(STATE.flowMode === 'EXISTING_USER' ? 'login' : 'register')">1. User Registration (1 Form)</button>
+      <button type="button" class="flow-pill" id="flowPillStep2Rate" data-goto="dashboard" onclick="jumpToView('dashboard')">2. Corridors, Select Bank, Lock Rate &amp; Submit</button>
+      <button type="button" class="flow-pill hidden" id="flowPillStep3Kyc" data-goto="kyc" onclick="jumpToView('dashboard')">KYC</button>
+      <button type="button" class="flow-pill hidden" id="flowPillStep4Ben" data-goto="beneficiary" onclick="jumpToView('dashboard')">Beneficiary</button>
+      <button type="button" class="flow-pill hidden" id="flowPillStep5Sum" data-goto="summary" onclick="jumpToView('summary')">Summary</button>
+      <button type="button" class="flow-pill" id="flowPillStep6Pay" data-goto="payment" onclick="jumpToView('payment')">3. MITO Hosted Page (Beneficiary &amp; Payment)</button>
+      <button type="button" class="flow-pill" id="flowPillStep7" data-goto="success" onclick="jumpToView('success')">4. See Status &amp; Dashboard</button>
     </div>
     <div class="flow-helper-actions">
       <button type="button" class="flow-util-btn" onclick="openInspectorModal('logs')">
@@ -105,6 +105,10 @@
         <strong id="rlwReceiveVal">₦1,831,010.00 NGN</strong>
       </div>
       <div class="rlw-row">
+        <span>Selected Bank:</span>
+        <strong id="rlwProviderVal">Zenith Bank International</strong>
+      </div>
+      <div class="rlw-row">
         <span>Locked <code>rateId</code>:</span>
         <code id="rlwRateIdVal">Not locked yet</code>
       </div>
@@ -147,16 +151,16 @@
         <div class="olowo-auth-card">
           <div class="mito-api-status-strip mb-14" style="flex-direction:column;align-items:stretch;gap:4px;background:#dcfce7;border:1.5px solid #22c55e;">
             <div style="font-size:12px;color:#14532d;font-weight:700;">
-              🔁 Flow 2 — Existing Verified User (<code>kycStatus = PASSED</code>)
+              🔁 Flow 2 — Existing Registered User
             </div>
             <div style="font-size:11.5px;color:#166534;">
-              <strong>High-Level Flow:</strong> Logs In → Checks Rate → Locks Rate → <strong>Skips MITO User Form &amp; KYC QR Code</strong> (MITO does not send hosted KYC link) → Selects Saved Beneficiary → Makes Payment → Sees Status → Returns to Dashboard.
+              <strong>High-Level Flow:</strong> Logs In → Gets Corridors &amp; Rates → Selects Bank (<code>GET /Providers</code>) → Locks Rate (<code>POST /Exchange/rates</code>) → Submits Transaction (<code>POST /Transactions/InitiateHostedTransaction</code>) → MITO Hosted Page Continues Flow (Beneficiary + Payment).
             </div>
           </div>
 
           <form id="formLogin" onsubmit="handleLoginSubmit(event)">
             <div class="olowo-field">
-              <label for="loginEmail">Email (Existing Verified User)</label>
+              <label for="loginEmail">Email (Existing Registered User)</label>
               <input type="email" id="loginEmail" class="olowo-input beige-fill" value="ahmed.diallo@mitonetwork.com" placeholder="you@example.com" required />
             </div>
 
@@ -208,30 +212,32 @@
     </section>
 
     <!-- ======================================================================
-         VIEW 1B: OLOWO CREATE YOUR ACCOUNT (`/register`) — Step 1
+         VIEW 1B: UNIFIED USER / SENDER REGISTRATION (`/register`) — Step 1
+         All Olowo + MITO Sender Registration Fields in ONE Form at the Beginning!
+         Submits to `POST /api/olowo/auth/register` and `POST /api/v1/mito/Users`
          ====================================================================== -->
     <section id="view-register" class="olowo-view">
-      <div class="olowo-auth-wrap">
+      <div class="olowo-auth-wrap" style="max-width:760px;">
         <div class="olowo-logo-block">
           <div class="olowo-welcome-small">Welcome to</div>
           <div class="olowo-wordmark">
             <span class="c-yellow">o</span><span class="c-green">l</span><span class="c-green">o</span><span class="c-green">w</span><span class="c-red">o</span>
           </div>
           <div class="olowo-tagline">make money simple</div>
-          <p class="olowo-auth-subtitle">Create your account</p>
+          <p class="olowo-auth-subtitle">Create your account — Complete User / Sender Registration</p>
         </div>
 
-        <div class="olowo-auth-card wide">
-          <!-- Step 1 Notice: Flow 1 (New User Registration) vs Flow 2 (Existing User Login) -->
+        <div class="olowo-auth-card wide" style="max-width:740px;">
+          <!-- Step 1 Notice: All User/Sender Registration Info in One Form at the Beginning -->
           <div class="mito-api-status-strip mb-14" style="flex-direction:column;align-items:stretch;gap:6px;background:#f0fdf4;border:1.5px solid #86efac;">
             <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
-              <span class="api-badge-ok">🆕 Flow 1: New User Registration (<code>POST /api/olowo/auth/register</code>)</span>
+              <span class="api-badge-ok">🆕 Step 1: Unified User/Sender Registration (<code>POST /api/olowo/auth/register</code> + <code>POST /api/v1/mito/Users</code>)</span>
               <button type="button" class="olowo-btn-outline-green sm" onclick="switchHighLevelFlowMode('EXISTING_USER')" style="font-size:11.5px;padding:3px 9px;background:#fff;">
-                🔁 Switch to Flow 2: Existing User Login →
+                🔁 Switch to Existing User Login →
               </button>
             </div>
             <div style="font-size:12px;color:#14532d;line-height:1.45;">
-              <strong>New User High-Level Flow:</strong> Registers → Checks rates → Locks rate → <strong>Enters required/remaining data needed by MITO for user creation (<code>POST /api/v1/mito/Users</code>) → Passes KYC (Hosted KYC QR shown ONLY for New User)</strong> → Adds beneficiary → Makes payment → Sees status → Returns to dashboard.
+              <strong>End-to-End Flow:</strong> 1. User Registers (All Sender Info in 1 Form → <code>POST /api/v1/mito/Users</code>) → 2. Get Corridors &amp; Rates (<code>GET /Exchange/corridors</code> + <code>GET /Exchange/affiliateRates</code>) → 3. Select Bank (<code>GET /Providers</code>) → 4. Lock Rate (<code>POST /Exchange/rates</code>) → 5. Submit Transaction (<code>POST /Transactions/InitiateHostedTransaction</code>) → <strong>MITO Hosted Page continues flow for creating Beneficiary &amp; any required info + Payment</strong>!
             </div>
           </div>
 
@@ -239,64 +245,165 @@
           <div class="olowo-preset-bar">
             <span class="preset-label">Quick Fill Profile:</span>
             <button type="button" class="preset-chip active" onclick="fillRegistrationPreset('david_incomplete')">
-              David Beckham (New User — Needs Sender Address/DOB &amp; KYC)
+              David Beckham (New User — Full Sender Info Pre-filled)
             </button>
             <button type="button" class="preset-chip" onclick="fillRegistrationPreset('ahmed_complete')">
-              Ahmed Diallo (Existing Verified Sender — KYC Passed)
+              Ahmed Diallo (Existing Registered Sender)
             </button>
           </div>
 
           <form id="formRegister" onsubmit="handleRegisterSubmit(event)">
-            <div class="olowo-field">
-              <label for="regFullName">Full name</label>
-              <input type="text" id="regFullName" class="olowo-input blue-tint" value="David Beckham" required />
-            </div>
+            <!-- Hidden combined Full Name field kept for backward compatibility, auto-synced with First + Last Name -->
+            <input type="hidden" id="regFullName" value="David Beckham" />
 
-            <div class="olowo-field">
-              <label for="regEmail">Email</label>
-              <input type="email" id="regEmail" class="olowo-input beige-fill" value="mohammadmumtazkhan+24@example.com" required />
-            </div>
+            <h4 class="olowo-section-subtitle" style="margin:6px 0 10px;color:#14532d;border-bottom:1px solid #e2e8f0;padding-bottom:6px;">
+              1. Personal &amp; Account Details
+            </h4>
 
-            <div class="olowo-field">
-              <label for="regPassword">Password <span class="muted-hint">(min 10 chars)</span></label>
-              <div class="olowo-input-icon-wrap">
-                <input type="password" id="regPassword" class="olowo-input beige-fill" value="••••••••••••" required />
-                <span class="olowo-eye-icon">👁</span>
+            <div class="olowo-grid-3">
+              <div class="olowo-field">
+                <label for="regFirstName">Legal First Name (<code>firstName</code>) <span class="req-star">*</span></label>
+                <input type="text" id="regFirstName" class="olowo-input blue-tint" value="David" oninput="syncRegFullNameFromParts()" required />
+              </div>
+              <div class="olowo-field">
+                <label for="regMiddleName">Middle Name (<code>middleName</code>)</label>
+                <input type="text" id="regMiddleName" class="olowo-input beige-fill" value="Robert" placeholder="Optional" />
+              </div>
+              <div class="olowo-field">
+                <label for="regLastName">Legal Last Name (<code>lastName</code>) <span class="req-star">*</span></label>
+                <input type="text" id="regLastName" class="olowo-input blue-tint" value="Beckham" oninput="syncRegFullNameFromParts()" required />
               </div>
             </div>
 
-            <div class="olowo-field">
-              <label for="regConfirmPassword">Confirm password</label>
-              <div class="olowo-input-icon-wrap">
-                <input type="password" id="regConfirmPassword" class="olowo-input beige-fill" value="••••••••••••" required />
-                <span class="olowo-eye-icon">👁</span>
+            <div class="olowo-grid-2">
+              <div class="olowo-field">
+                <label for="regEmail">Email (<code>email</code>) <span class="req-star">*</span></label>
+                <input type="email" id="regEmail" class="olowo-input beige-fill" value="mohammadmumtazkhan+24@example.com" required />
+              </div>
+              <div class="olowo-field">
+                <label>Phone number (<code>phoneNumber</code>) <span class="req-star">*</span></label>
+                <div class="olowo-phone-grid">
+                  <select id="regDialCode" class="olowo-input beige-fill">
+                    <option value="+44" selected>+44 UK</option>
+                    <option value="+33">+33 FR</option>
+                    <option value="+234">+234 NG</option>
+                  </select>
+                  <input type="tel" id="regPhone" class="olowo-input blue-tint" value="+44 7553039222" required />
+                </div>
               </div>
             </div>
 
-            <div class="olowo-field">
-              <label>Phone number<span class="req-star">*</span></label>
-              <div class="olowo-phone-grid">
-                <select id="regDialCode" class="olowo-input beige-fill">
-                  <option value="+44" selected>+44 United Kingdom</option>
-                  <option value="+33">+33 France</option>
-                  <option value="+234">+234 Nigeria</option>
+            <div class="olowo-grid-2">
+              <div class="olowo-field">
+                <label for="regPassword">Password <span class="muted-hint">(min 10 chars)</span> <span class="req-star">*</span></label>
+                <div class="olowo-input-icon-wrap">
+                  <input type="password" id="regPassword" class="olowo-input beige-fill" value="••••••••••••" required />
+                  <span class="olowo-eye-icon">👁</span>
+                </div>
+              </div>
+              <div class="olowo-field">
+                <label for="regConfirmPassword">Confirm password <span class="req-star">*</span></label>
+                <div class="olowo-input-icon-wrap">
+                  <input type="password" id="regConfirmPassword" class="olowo-input beige-fill" value="••••••••••••" required />
+                  <span class="olowo-eye-icon">👁</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="olowo-grid-3">
+              <div class="olowo-field">
+                <label for="regGender">Gender (<code>gender</code>) <span class="req-star">*</span></label>
+                <select id="regGender" class="olowo-input beige-fill">
+                  <option value="M" selected>M — Male</option>
+                  <option value="F">F — Female</option>
                 </select>
-                <input type="tel" id="regPhone" class="olowo-input blue-tint" value="+44 7553039222" required />
+              </div>
+              <div class="olowo-field">
+                <label for="regDob">Date of Birth (<code>dateOfBirth</code>) <span class="req-star">*</span></label>
+                <input type="date" id="regDob" class="olowo-input beige-fill" value="1985-05-02" required />
+              </div>
+              <div class="olowo-field">
+                <label for="regBaseCurrency">Base currency</label>
+                <select id="regBaseCurrency" class="olowo-input beige-fill">
+                  <option value="GBP" selected>GBP — British Pound</option>
+                  <option value="EUR">EUR — Euro</option>
+                </select>
               </div>
             </div>
 
             <div class="olowo-field">
-              <label for="regBaseCurrency">Base currency</label>
-              <select id="regBaseCurrency" class="olowo-input beige-fill">
-                <option value="GBP" selected>GBP — British Pound</option>
-                <option value="EUR">EUR — Euro</option>
+              <label for="regEntityType">Legal Entity Type (<code>legalEntityType</code>: I or B) <span class="req-star">*</span></label>
+              <select id="regEntityType" class="olowo-input beige-fill" onchange="document.getElementById('regBusinessEntityRow').classList.toggle('hidden', this.value !== 'B');">
+                <option value="I" selected>I — Individual</option>
+                <option value="B">B — Business</option>
               </select>
-              <div class="olowo-field-hint">The currency your finances are reported in. You can change it later.</div>
             </div>
 
-            <div class="olowo-reg-actions-row">
+            <div id="regBusinessEntityRow" class="olowo-grid-2 hidden">
+              <div class="olowo-field">
+                <label for="regCompanyNumber">Company Number (<code>companyNumber</code>) <span class="req-star">*</span></label>
+                <input type="text" id="regCompanyNumber" class="olowo-input beige-fill" placeholder="e.g. 12345678" />
+              </div>
+              <div class="olowo-field">
+                <label for="regBusinessName">Business Name (<code>businessName</code>) <span class="req-star">*</span></label>
+                <input type="text" id="regBusinessName" class="olowo-input beige-fill" placeholder="e.g. Olowo Ventures Ltd" />
+              </div>
+            </div>
+
+            <h4 class="olowo-section-subtitle" style="margin:16px 0 10px;color:#14532d;border-bottom:1px solid #e2e8f0;padding-bottom:6px;">
+              2. Residential Address &amp; Country Details (Submitted to <code>POST /api/v1/mito/Users</code>)
+            </h4>
+
+            <div class="olowo-grid-2">
+              <div class="olowo-field">
+                <label for="regBuildingNumber">Building Number (<code>buildingNumber</code>)</label>
+                <input type="text" id="regBuildingNumber" class="olowo-input beige-fill" value="23" placeholder="e.g. 23" />
+              </div>
+              <div class="olowo-field">
+                <label for="regSubStreet">Building Name / Sub-street (<code>subStreet</code>)</label>
+                <input type="text" id="regSubStreet" class="olowo-input beige-fill" placeholder="Optional apartment / suite" />
+              </div>
+            </div>
+
+            <div class="olowo-field">
+              <label for="regStreet">Street Address (<code>street</code>) <span class="req-star">*</span></label>
+              <input type="text" id="regStreet" class="olowo-input blue-tint" value="Holland Park" placeholder="Enter street address..." required />
+            </div>
+
+            <div class="olowo-grid-2">
+              <div class="olowo-field">
+                <label for="regCity">City (<code>addressCity</code>) <span class="req-star">*</span></label>
+                <input type="text" id="regCity" class="olowo-input beige-fill" value="London" placeholder="Enter city" required />
+              </div>
+              <div class="olowo-field">
+                <label for="regPostcode">Postcode / Zip-code (<code>addressPostcode</code>) <span class="req-star">*</span></label>
+                <input type="text" id="regPostcode" class="olowo-input beige-fill" value="W11 3TD" placeholder="Enter postcode" required />
+              </div>
+            </div>
+
+            <div class="olowo-grid-2">
+              <div class="olowo-field">
+                <label for="regCountryIso3">Residence Country ISO3 (<code>countryIso3</code> / <code>addressCountryIso3</code>) <span class="req-star">*</span></label>
+                <select id="regCountryIso3" class="olowo-input beige-fill">
+                  <option value="GBR" selected>GBR — United Kingdom</option>
+                  <option value="FRA">FRA — France</option>
+                </select>
+              </div>
+              <div class="olowo-field">
+                <label for="regBirthCountryIso3">Birth Country ISO3 (<code>birthCountryIso3</code>) <span class="req-star">*</span></label>
+                <select id="regBirthCountryIso3" class="olowo-input beige-fill">
+                  <option value="GBR" selected>GBR — United Kingdom</option>
+                  <option value="NGA">NGA — Nigeria</option>
+                  <option value="FRA">FRA — France</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="olowo-reg-actions-row" style="margin-top:16px;">
               <a href="#login" class="olowo-already-link" onclick="switchAuthMode('login'); return false;">Already have an account?</a>
-              <button type="submit" class="olowo-btn-green px-create" id="btnRegisterCreate">Create</button>
+              <button type="submit" class="olowo-btn-green px-create" id="btnRegisterCreate">
+                Register User &amp; Continue to Rates →
+              </button>
             </div>
           </form>
 
@@ -307,7 +414,6 @@
             <button type="button" class="olowo-oauth-btn" onclick="handleRegisterSubmit(event)"><span class="ms-icon">⊞</span></button>
             <button type="button" class="olowo-oauth-btn" onclick="handleRegisterSubmit(event)"><span class="apple-icon"></span></button>
           </div>
-          <div class="olowo-field-hint center mt-8">OAuth accounts will be created with basic profile details. You can add tax information later.</div>
           <div class="center mt-12">
             <a href="#login" class="olowo-already-link" onclick="switchAuthMode('login'); return false;">Already have an account?</a>
           </div>
@@ -336,7 +442,8 @@
     </div>
 
     <!-- ======================================================================
-         VIEW 2: OLOWO SEND MONEY / RATE CHECK DASHBOARD (`/remittances/create`)
+         VIEW 2: OLOWO SEND MONEY / CORRIDORS, RATES, SELECT BANK (`GET Providers`),
+         LOCK RATE (`POST Exchange/rates`) & SUBMIT TRANSACTION (`POST InitiateHostedTransaction`)
          ====================================================================== -->
     <section id="view-dashboard" class="olowo-view hidden">
       <div class="olowo-dashboard-wrap">
@@ -369,7 +476,7 @@
           <span id="dashAlertText">Account created successfully!</span>
         </div>
 
-        <!-- Redirect Result Card (Shown after Step 7 Payment completes and redirects to Olowo redirectUrl) -->
+        <!-- Redirect Result Card (Shown after Payment completes and redirects to Olowo redirectUrl) -->
         <div id="redirectResultCard" class="olowo-redirect-result-card hidden"></div>
 
         <!-- Main Send Money Container -->
@@ -387,16 +494,17 @@
             <a href="#transactionsSection" class="olowo-transactions-link">Transactions &nbsp;›</a>
           </div>
 
-          <!-- API Endpoint Banner for Step 2: Get Corridors + Affiliate Commercial Rates (Before Locking Rates) -->
+          <!-- API Endpoint Banner for Step 2: Get Corridors + Affiliate Commercial Rates + Get Providers (Banks) -->
           <div class="mito-api-status-strip mb-14" style="flex-direction:column;align-items:stretch;gap:6px;">
             <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
-              <span class="api-badge-ok">📡 1. Get Corridors (Live): <code>GET /api/v1/mito/Exchange/corridors?ServiceCode=MONEYTRANSFER</code></span>
-              <span class="api-badge-ok">📡 2. Affiliate Rates (Live): <code>GET /api/v1/mito/Exchange/affiliateRates</code></span>
+              <span class="api-badge-ok">📡 1. Corridors: <code>GET /api/v1/mito/Exchange/corridors</code></span>
+              <span class="api-badge-ok">📡 2. Rates: <code>GET /api/v1/mito/Exchange/affiliateRates</code></span>
+              <span class="api-badge-ok">📡 3. Banks: <code>GET /api/v1/mito/Providers</code></span>
               <span class="api-badge-url" id="corridorsDiscoveredBadge">55 Active Corridors Discovered</span>
             </div>
             <div style="font-family:'JetBrains Mono',monospace;font-size:11px;background:#0f172a;color:#e2e8f0;padding:9px 12px;border-radius:8px;line-height:1.45;">
               <div style="color:#4ade80;font-weight:700;" id="affiliateRateEndpointTitle">GET /api/v1/mito/Exchange/affiliateRates?FromCountry=GBR&amp;ToCountry=NGA&amp;FromCurrency=GBP&amp;ToCurrency=NGN</div>
-              <div style="color:#94a3b8;">Query params: <code>userId</code> (opt), <code>FromCountry</code>, <code>ToCountry</code>, <code>FromCurrency</code>, <code>ToCurrency</code> · Returns commercial rates before locking via <code>POST Exchange/rates</code></div>
+              <div style="color:#94a3b8;">Flow: Get Corridors &amp; Rates → Select Bank (<code>GET /Providers</code> for receive country/currency) → Lock Rate (<code>POST /Exchange/rates</code>) → Submit Transaction (<code>POST /Transactions/InitiateHostedTransaction</code>)</div>
               <div style="color:#fde047;margin-top:3px;" id="affiliateRateResponsePreview">
                 <code>rateMoneyTransfer</code> (Customer rate): <strong>1831.01</strong> · <code>partnerRateMoneyTransfer</code> (Partner rate): <strong>1831.01</strong> · <code>rateExpiry</code>: <strong>Live</strong>
               </div>
@@ -408,10 +516,10 @@
 
           <!-- Quick Test Amount / Corridor Bar -->
           <div class="olowo-rate-quickbar">
-            <span class="quickbar-label">Test Amount &amp; KYC Threshold:</span>
-            <button type="button" class="quick-amt-btn" onclick="setSendAmountQuick(5)">£5.00 (Mini-KYC)</button>
-            <button type="button" class="quick-amt-btn active" onclick="setSendAmountQuick(1000)">£1,000.00 (Mini-KYC)</button>
-            <button type="button" class="quick-amt-btn highlight-amber" onclick="setSendAmountQuick(5500)">£5,500.00 (≥ £5,000 Extended-KYC)</button>
+            <span class="quickbar-label">Quick Send Amount:</span>
+            <button type="button" class="quick-amt-btn" onclick="setSendAmountQuick(5)">£5.00</button>
+            <button type="button" class="quick-amt-btn active" onclick="setSendAmountQuick(1000)">£1,000.00</button>
+            <button type="button" class="quick-amt-btn highlight-amber" onclick="setSendAmountQuick(5500)">£5,500.00</button>
             <div class="collection-mode-pills">
               <button type="button" id="pillBankMode" class="mode-pill active" onclick="setCollectionMode('BANKACCOUNT')">🏦 Bank Account</button>
               <button type="button" id="pillMobileMode" class="mode-pill" onclick="setCollectionMode('MOBILEMONEY')">📱 Mobile Money</button>
@@ -504,17 +612,135 @@
                 />
               </div>
 
-              <!-- Noted Corridor & KYC Tier Indicator -->
+              <!-- Noted Corridor Indicator -->
               <div class="sunset-corridor-note" id="corridorNotePill">
-                Corridor: <strong>GBP → NGN (Nigeria)</strong> · Mode: <strong id="noteCollectionMode">BANKACCOUNT</strong> · KYC Tier: <strong id="noteKycTier">Mini-KYC (&lt; £5,000)</strong>
+                Corridor: <strong>GBP → NGN (Nigeria)</strong> · Mode: <strong id="noteCollectionMode">BANKACCOUNT</strong> · Bank: <strong id="noteSelectedBank">Zenith Bank International</strong>
               </div>
             </div>
           </div>
 
-          <!-- CONTINUE TO CHECKOUT BUTTON (Immediately Locks Rate via POST /api/v1/mito/Exchange/rates & Starts Side Countdown!) -->
-          <button type="button" id="btnContinueToCheckout" class="olowo-btn-green full-w checkout-cta" onclick="handleContinueToCheckout()">
-            🔒 Lock Rate &amp; Continue to checkout
-          </button>
+          <!-- ==================================================================
+               SELECT RECIPIENT BANK / PROVIDER (`GET /api/v1/mito/Providers`)
+               & REQUIRED TRANSACTION FIELDS BEFORE LOCKING RATE & SUBMITTING TXN
+               ================================================================== -->
+          <div class="olowo-subcard mt-16" style="background:#ffffff;border:2px solid #86efac;border-radius:16px;padding:18px;box-shadow:0 6px 20px rgba(21,128,61,0.06);">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
+              <div>
+                <h4 class="olowo-section-subtitle" style="margin:0;color:#14532d;font-size:15px;">
+                  🏦 Select Recipient Bank / Provider (<code id="dashProviderEndpointBadge">GET /api/v1/mito/Providers?receiveCountryIso3=NGA&amp;collectionMode=BANKACCOUNT</code>)
+                </h4>
+                <div style="font-size:12px;color:#166534;margin-top:2px;">
+                  Select the destination bank/provider for <strong id="dashProviderCountryLabel">Nigeria (NGN)</strong>. We lock the rate for this bank and submit the transaction — <strong>MITO's Hosted Page will collect Beneficiary details &amp; any required info!</strong>
+                </div>
+              </div>
+              <span class="mono-pill" id="dashLockedRateStatusPill" style="background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;">
+                Rate: Not locked yet
+              </span>
+            </div>
+
+            <!-- Downward-Opening Searchable Bank / Provider Droplist -->
+            <div class="olowo-field">
+              <label id="dashProviderLabel">Recipient Bank / Provider (<code>providerId</code>) <span class="req-star">*</span> <span class="api-tag">Searchable · Opens Downwards ↓</span></label>
+              <div class="downward-droplist" id="droplist-dashProvider">
+                <button type="button" class="droplist-trigger" onclick="toggleDownwardDroplist('dashProvider')">
+                  <span id="droplistSelected-dashProvider">Zenith Bank International</span>
+                  <span class="droplist-chevron">⌄</span>
+                </button>
+                <div class="droplist-menu" id="droplistMenu-dashProvider">
+                  <div class="droplist-search-wrap">
+                    <input
+                      type="text"
+                      class="droplist-search-input"
+                      id="droplistSearch-dashProvider"
+                      placeholder="Search bank or mobile network..."
+                      oninput="filterDownwardDroplist('dashProvider', this.value)"
+                    />
+                  </div>
+                  <ul class="droplist-options" id="droplistOptions-dashProvider"></ul>
+                </div>
+              </div>
+            </div>
+
+            <!-- Source of Funds, Transfer Reason & Payment Narration (Required by POST /Transactions/InitiateHostedTransaction) -->
+            <div class="olowo-grid-3 mt-12">
+              <div class="olowo-field">
+                <label>Source of funds (<code>sourceOfFundCode</code>) <span class="req-star">*</span> <span class="api-tag">↓</span></label>
+                <div class="downward-droplist" id="droplist-dashSof">
+                  <button type="button" class="droplist-trigger" onclick="toggleDownwardDroplist('dashSof')">
+                    <span id="droplistSelected-dashSof">Salary</span>
+                    <span class="droplist-chevron">⌄</span>
+                  </button>
+                  <div class="droplist-menu" id="droplistMenu-dashSof">
+                    <div class="droplist-search-wrap">
+                      <input
+                        type="text"
+                        class="droplist-search-input"
+                        id="droplistSearch-dashSof"
+                        placeholder="Search source of funds..."
+                        oninput="filterDownwardDroplist('dashSof', this.value)"
+                      />
+                    </div>
+                    <ul class="droplist-options" id="droplistOptions-dashSof"></ul>
+                  </div>
+                </div>
+              </div>
+
+              <div class="olowo-field">
+                <label>Transfer reason (<code>reasonCode</code>) <span class="req-star">*</span> <span class="api-tag">↓</span></label>
+                <div class="downward-droplist" id="droplist-dashReason">
+                  <button type="button" class="droplist-trigger" onclick="toggleDownwardDroplist('dashReason')">
+                    <span id="droplistSelected-dashReason">For Own Expenditures</span>
+                    <span class="droplist-chevron">⌄</span>
+                  </button>
+                  <div class="droplist-menu" id="droplistMenu-dashReason">
+                    <div class="droplist-search-wrap">
+                      <input
+                        type="text"
+                        class="droplist-search-input"
+                        id="droplistSearch-dashReason"
+                        placeholder="Search transfer reason..."
+                        oninput="filterDownwardDroplist('dashReason', this.value)"
+                      />
+                    </div>
+                    <ul class="droplist-options" id="droplistOptions-dashReason"></ul>
+                  </div>
+                </div>
+              </div>
+
+              <div class="olowo-field">
+                <label for="dashPaymentNarration">Payment Narration (<code>paymentNarration</code>) <span class="req-star">*</span></label>
+                <input
+                  type="text"
+                  id="dashPaymentNarration"
+                  class="olowo-input"
+                  value="Remittance transfer via Olowo / Balad"
+                  placeholder="Payment reference / narration"
+                />
+              </div>
+            </div>
+
+            <!-- Action Buttons: 1. Lock Rate Only (Optional Preview) | 2. Lock Rate & Submit Transaction (Primary CTA) -->
+            <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px;">
+              <button
+                type="button"
+                id="btnLockRateOnly"
+                class="olowo-btn-outline-green"
+                style="padding:13px 18px;font-weight:700;"
+                onclick="handleLockRateOnlyOnDashboard()"
+              >
+                🔒 Lock Rate (<code>POST /Exchange/rates</code>)
+              </button>
+              <button
+                type="button"
+                id="btnContinueToCheckout"
+                class="olowo-btn-green flex-1"
+                style="padding:14px 20px;font-size:15.5px;font-weight:800;"
+                onclick="handleContinueToCheckout()"
+              >
+                🚀 Lock Rate &amp; Submit Transaction (Open MITO Hosted Page) →
+              </button>
+            </div>
+          </div>
 
           <div class="mito-powered-footer">
             <strong>Powered by Mito Money</strong><br/>
@@ -1354,34 +1580,35 @@
     </section>
 
     <!-- ======================================================================
-         VIEW 6 & 7: MITO HOSTED PAYMENT SCREEN (`Let's complete your transaction` + P1..P7)
-         Loaded after locking rate (`POST /api/v1/mito/Exchange/rates`) and
-         initiating transaction (`POST /api/v1/mito/Transactions/InitiateHostedTransaction`)
+         VIEW 6 & 7: MITO HOSTED PAGE (`view-payment`)
+         Loaded after selecting bank (`GET /api/v1/mito/Providers`), locking rate (`POST /api/v1/mito/Exchange/rates`),
+         and submitting transaction (`POST /api/v1/mito/Transactions/InitiateHostedTransaction`).
+         MITO returns the hosted page (`requiredAction`) that continues the flow for creating/selecting
+         the beneficiary, any required info, and completing payment!
          ====================================================================== -->
     <section id="view-payment" class="olowo-view hidden">
       <div class="olowo-fullscreen-page">
         <div class="fullscreen-topbar">
           <div style="display:flex;align-items:center;gap:8px;">
-            <button type="button" class="olowo-btn-back-sm" onclick="jumpToView('beneficiary')">← Back to Beneficiary</button>
-            <button type="button" class="olowo-btn-back-sm" onclick="jumpToView('summary')">📋 Transfer Summary</button>
+            <button type="button" class="olowo-btn-back-sm" onclick="jumpToView('dashboard')">← Back to Corridors, Bank &amp; Rate Lock</button>
           </div>
-          <div class="fullscreen-step-badge" id="payTopStepBadge">Make Payment · Live MITO Hosted Checkout (`requiredAction.payment.link`)</div>
+          <div class="fullscreen-step-badge" id="payTopStepBadge">Step 3 · MITO Hosted Page (Continues Flow: Create Beneficiary &amp; Complete Payment)</div>
           <div class="corridor-chip-sm" id="payRateIdBadge">RATE-...</div>
         </div>
 
-        <!-- API Lock & Hosted Transaction Strip (Shows ONLY requiredAction.payment.link loaded + live redirectUrl) -->
+        <!-- API Lock & Hosted Transaction Strip -->
         <div class="mito-api-status-strip mb-14" style="flex-direction:column;align-items:stretch;gap:8px;">
           <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
             <span class="api-badge-ok">✓ <code>POST /api/v1/mito/Transactions/InitiateHostedTransaction</code> (<strong id="stripTxId">TXN-...</strong> · Ref: <strong id="stripMitoRef">102321</strong>)</span>
-            <span class="api-badge-ok">✓ Loaded ONLY <code>requiredAction.payment.link</code> (Journey: <code id="stripJourneyCode">JNY-...</code> · Rate: <code id="stripRateId">RATE-...</code>)</span>
+            <span class="api-badge-ok">✓ Bank: <strong id="stripProviderName">Zenith Bank International</strong> · Journey: <code id="stripJourneyCode">JNY-...</code> · Rate: <code id="stripRateId">RATE-...</code></span>
           </div>
           <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;background:#f8fafc;padding:8px 12px;border-radius:8px;border:1px solid #cbd5e1;">
             <div style="font-size:12px;color:#1e293b;word-break:break-all;">
-              <div><strong>Payment Link (<code>requiredAction.payment.link</code>):</strong> <a id="stripPaymentUrlLink" href="https://mito-checkout-1cca8e18297e.herokuapp.com" target="_blank" rel="noopener" style="color:#2563eb;font-weight:700;text-decoration:underline;"><code id="stripPaymentUrl">https://mito-checkout-1cca8e18297e.herokuapp.com?journeyCode=JNY-...</code></a></div>
+              <div><strong>MITO Hosted Transaction Link:</strong> <a id="stripPaymentUrlLink" href="https://mito-checkout-1cca8e18297e.herokuapp.com" target="_blank" rel="noopener" style="color:#2563eb;font-weight:700;text-decoration:underline;"><code id="stripPaymentUrl">https://mito-checkout-1cca8e18297e.herokuapp.com/transaction?journeyCode=JNY-...</code></a></div>
               <div style="margin-top:4px;color:#475569;"><strong>Return Redirect URL (<code>redirectUrl</code>):</strong> <code id="stripRedirectUrl">http://localhost:3000/remittances/callback</code></div>
             </div>
             <a id="btnOpenLiveMitoPaymentLink" href="https://mito-checkout-1cca8e18297e.herokuapp.com" target="_blank" rel="noopener" class="olowo-btn-green sm" style="text-decoration:none;white-space:nowrap;">
-              🔗 Open Live Payment Link ↗
+              🔗 Open Live MITO Hosted Page ↗
             </a>
           </div>
           <!-- Quick Redirect URL Callback Bar (Tests all 6 MITO Redirect URL payment cases on GET /remittances/callback!) -->
@@ -1408,7 +1635,7 @@
           </div>
         </div>
 
-        <!-- Live Embedded MITO Hosted Payment Link Page (Real `mito-checkout-1cca8e18297e.herokuapp.com` Checkout!) -->
+        <!-- Live Embedded MITO Hosted Page (Continues flow for creating Beneficiary + Required Info + Payment) -->
         <div class="mito-live-iframe-shell" style="background:#ffffff;border:2px solid #cbd5e1;border-radius:16px;overflow:hidden;box-shadow:0 12px 32px rgba(15,23,42,0.08);">
           <!-- Live Browser Frame Header -->
           <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;padding:10px 14px;background:#0f172a;color:#f8fafc;border-bottom:1px solid #334155;">
@@ -1423,11 +1650,11 @@
               </span>
             </div>
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-              <span style="font-size:11.5px;background:#14532d;color:#bbf7d0;border:1px solid #22c55e;padding:4px 10px;border-radius:6px;font-weight:700;">
-                ✓ KYC Passed — No Hosted KYC Link / QR Sent by MITO (<code>requiredAction.kyc: null</code>)
-              </span>
               <button type="button" id="btnMitoFrameModeCheckout" class="olowo-btn-green sm" onclick="switchMitoLivePaymentFrameMode('checkout')" style="font-size:11.5px;padding:5px 10px;">
-                💳 Live MITO Payment Checkout
+                👤+💳 Hosted Full Flow (Create Beneficiary &amp; Pay)
+              </button>
+              <button type="button" id="btnMitoFrameModeBeneficiary" class="olowo-btn-outline-green sm" onclick="switchMitoLivePaymentFrameMode('beneficiary')" style="font-size:11.5px;padding:5px 10px;background:#1e293b;color:#e2e8f0;border-color:#475569;">
+                🏦 Hosted Beneficiary Link Only
               </button>
               <button type="button" class="olowo-btn-outline-green sm" onclick="reloadMitoLivePaymentIframe()" style="font-size:11.5px;padding:5px 10px;background:#1e293b;color:#e2e8f0;border-color:#475569;">
                 ↻ Reload
@@ -1435,11 +1662,11 @@
             </div>
           </div>
 
-          <!-- Real Live MITO Hosted Payment Iframe -->
+          <!-- Real Live MITO Hosted Iframe -->
           <div style="position:relative;width:100%;min-height:760px;background:#ffffff;">
             <iframe
               id="mitoLivePaymentIframe"
-              title="Live MITO Hosted Payment Link"
+              title="Live MITO Hosted Page"
               src="about:blank"
               allow="payment *; camera *; microphone *; geolocation *; clipboard-write *"
               style="width:100%;height:760px;border:none;display:block;background:#ffffff;"
@@ -1462,8 +1689,8 @@
     <section id="view-success" class="olowo-view hidden">
       <div class="olowo-fullscreen-page">
         <div class="fullscreen-topbar">
-          <button type="button" class="olowo-btn-back-sm" onclick="jumpToView('payment')">← Back to MITO Payment</button>
-          <div class="fullscreen-step-badge" id="succStepBadge">Step 7 of 7 · Redirect Result Captured on Olowo (`redirectUrl`)</div>
+          <button type="button" class="olowo-btn-back-sm" onclick="jumpToView('payment')">← Back to MITO Hosted Page</button>
+          <div class="fullscreen-step-badge" id="succStepBadge">Step 4 · Redirect Result Captured on Olowo (`redirectUrl`)</div>
           <div class="corridor-chip-sm" id="succTxBadge">TXN-...</div>
         </div>
 
@@ -1542,10 +1769,10 @@
             </div>
 
             <div class="olowo-summary-card">
-              <h4>Beneficiary</h4>
-              <div class="sum-row"><span>Recipient</span><strong id="succBenName">Topupnigeria.com nig Ltd</strong></div>
-              <div class="sum-row"><span>Beneficiary ID</span><strong class="mono-pill" id="succBenId">BNF-...</strong></div>
-              <div class="sum-row"><span>Bank / Network</span><strong id="succBenBank">United Bank for Africa Plc (UBA)</strong></div>
+              <h4>Selected Bank &amp; Beneficiary</h4>
+              <div class="sum-row"><span>Recipient</span><strong id="succBenName">Created in MITO Hosted Page</strong></div>
+              <div class="sum-row"><span>Beneficiary ID</span><strong class="mono-pill" id="succBenId">MITO-HOSTED</strong></div>
+              <div class="sum-row"><span>Bank / Network</span><strong id="succBenBank">Zenith Bank International</strong></div>
               <div class="sum-row"><span>Collection Mode</span><strong id="succBenMode">BANKACCOUNT</strong></div>
             </div>
           </div>
@@ -1592,7 +1819,7 @@
       <!-- TAB 1: LIVE API LOGS -->
       <div id="inspPanelLogs" class="inspector-body">
         <div class="insp-toolbar">
-          <span>Every API call in the 7-step flow (`Register`, `CheckStatusAndCorridor`, `ExecuteSenderKyc`, `Beneficiary/requirements`, `Providers`, `Types`, `Beneficiary`, `Exchange/rates`, `InitiateHostedTransaction`, `CompleteHostedPayment`) is logged below:</span>
+          <span>Every API call in the flow (`Register`, `Users`, `Exchange/corridors`, `Exchange/affiliateRates`, `Providers`, `Lookups/types`, `Exchange/rates`, `InitiateHostedTransaction`, `CompleteHostedPayment`) is logged below:</span>
           <button type="button" class="flow-util-btn" onclick="clearApiLogs()">Clear Logs</button>
         </div>
         <div id="apiLogsContainer" class="api-logs-list"></div>
@@ -1602,15 +1829,13 @@
       <div id="inspPanelWireframes" class="inspector-body hidden">
         <div class="docs-grid">
           <div class="doc-card">
-            <h3>Proposed 7-Step Olowo × MITO Integration Architecture</h3>
+            <h3>Streamlined Olowo × MITO Integration Flow</h3>
             <ol class="doc-steps-list">
-              <li><strong>Step 1 — User Registration &amp; Sign In (`/register` &amp; `/login`)</strong>: At creation, check user by <code>email</code>; after creation, identify user by <code>userId</code>. Basic Olowo registration fields are collected here; full user info is submitted to <code>POST /api/v1/mito/Users</code> only when collected in Step 3.</li>
-              <li><strong>Step 2 — Rate Check &amp; Immediate Rate Lock (`/remittances/create`)</strong>: Default corridor <code>GBP (UK — GBR) → NGN (Nigeria — NGA)</code>. Calls <code>GET /api/v1/mito/Exchange/corridors</code> &amp; <code>GET /api/v1/mito/Exchange/affiliateRates</code>. Clicking <strong>🔒 Lock Rate &amp; Continue to checkout</strong> immediately locks the rate via <code>POST /api/v1/mito/Exchange/rates</code> and starts the side expiry countdown timer (redirecting back to Step 2 if expired).</li>
-              <li><strong>Step 3 — Sender Info &amp; MITO KYC (Shown ONLY for New User or Changed Details)</strong>: Once a user's KYC passes (<code>PASSED</code>), repeat KYC is skipped and Sender forms are not shown for existing verified senders unless their address or other details change.</li>
-              <li><strong>Step 4 — Full-Screen Beneficiary Selection / Creation</strong>: Existing saved beneficiaries are shown by default; the New Beneficiary creation form is shown only for a new user or when clicking <strong>Create new beneficiary +</strong>. Submits via <code>POST /api/v1/mito/Beneficiary</code>.</li>
-              <li><strong>Step 5 — Summary &amp; Confirm</strong>: Reviews transfer, sender, beneficiary, and <code>redirectUrl</code> (<code>/remittances/callback</code>).</li>
-              <li><strong>Step 6 — Initiate Hosted Transaction &amp; Live MITO Payment Page</strong>: Calls <code>POST /api/v1/mito/Transactions/InitiateHostedTransaction</code> and loads <strong>only</strong> <code>requiredAction.payment.link</code> inside the live embedded MITO Payment Checkout page.</li>
-              <li><strong>Step 7 — Redirect URL Payment Result (`GET /remittances/callback`)</strong>: Captures and handles all 6 MITO payment cases (<code>READYTOPROCESS</code> / Success in Green, <code>AWAITINGPAYMENT</code> &amp; <code>INREVIEW</code> in Amber, and <code>CANCELLED</code>, <code>EXPIRED</code>, &amp; <code>FAILED</code> in Red without ever saying "You paid" or "Recipient receives" when payment did not complete).</li>
+              <li><strong>Step 1 — Unified User/Sender Registration (`/register` &amp; `/login`)</strong>: User registration happens at the beginning in <strong>one single form</strong> collecting all personal, account, and residential address fields, and immediately submits to <code>POST /api/olowo/auth/register</code> &amp; <code>POST /api/v1/mito/Users</code> to obtain the MITO <code>userId</code>. No separate KYC page is shown.</li>
+              <li><strong>Step 2 — Get Corridors &amp; Show Rates (`/remittances/create`)</strong>: Calls <code>GET /api/v1/mito/Exchange/corridors</code> &amp; <code>GET /api/v1/mito/Exchange/affiliateRates</code> to display live corridors and commercial exchange rates.</li>
+              <li><strong>Step 3 — Select Bank (`GET /api/v1/mito/Providers`)</strong>: Based on the selected receive country/currency and collection mode (<code>BANKACCOUNT</code> or <code>MOBILEMONEY</code>), fetches providers via <code>GET /api/v1/mito/Providers</code> so the user selects the destination bank/provider right on the Rate screen.</li>
+              <li><strong>Step 4 — Lock Rate &amp; Submit Transaction (`POST /Exchange/rates` → `POST /Transactions/InitiateHostedTransaction`)</strong>: Locks the exchange rate with the selected <code>providerId</code> (starting the side expiry countdown timer) and submits the transaction to MITO.</li>
+              <li><strong>Step 5 — MITO Hosted Page Continues Flow (`requiredAction`)</strong>: MITO returns a hosted page in response that continues the flow for creating/selecting the beneficiary, any required info if needed, and completing payment, then redirects to <code>/remittances/callback</code>.</li>
             </ol>
           </div>
         </div>

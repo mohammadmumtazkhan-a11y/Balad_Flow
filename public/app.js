@@ -48,6 +48,9 @@ const STATE = {
   relationships: [],
   mandatoryFields: [],
   selectedDroplists: {
+    dashProvider: null,
+    dashSof: null,
+    dashReason: null,
     provider: null,
     reason: null,
     sof: null,
@@ -57,11 +60,13 @@ const STATE = {
   activeBeneficiary: null,
   savedBeneficiaries: [],
 
-  // Step 5 & 6: Locked Rate & Hosted Transaction
+  // Step 3: Locked Rate & MITO Hosted Transaction
   rateId: null,
   lockedRate: null,
   transactionId: null,
   paymentUrl: null,
+  paymentCheckoutUrl: null,
+  beneficiaryHostedUrl: null,
   redirectUrl: `${window.location.origin || 'http://localhost:3000'}/remittances/callback`,
   selectedUkBank: 'Barclays',
 
@@ -187,52 +192,45 @@ function updateTopFlowBarForUserState() {
   const pill2 = document.getElementById('flowPillStep2Rate');
   const pill3Kyc = document.getElementById('flowPillStep3Kyc');
   const pill4Ben = document.getElementById('flowPillStep4Ben');
+  const pill5Sum = document.getElementById('flowPillStep5Sum');
   const pill6Pay = document.getElementById('flowPillStep6Pay');
   const pill7 = document.getElementById('flowPillStep7');
   const summaryStrip = document.getElementById('flowHighLevelSummaryStrip');
 
+  // Per User Rule: Don't show any KYC page, and select bank -> lock rate -> submit transaction -> MITO Hosted Page continues flow for beneficiary & payment!
+  if (pill3Kyc) pill3Kyc.classList.add('hidden');
+  if (pill4Ben) pill4Ben.classList.add('hidden');
+  if (pill5Sum) pill5Sum.classList.add('hidden');
+
   if (isExistingFlow) {
-    // Existing User Flow: Logs in -> Checks rate -> Locks rate -> Selects beneficiary & makes payment -> Sees status -> Returns to dashboard
-    // Step 3 (MITO User Data & KYC QR Code) is completely hidden because KYC is PASSED and MITO does not send hosted KYC link!
     if (pill1) pill1.textContent = '1. Log In (Existing User)';
-    if (pill2) pill2.textContent = '2. Check & Lock Rate';
-    if (pill3Kyc) pill3Kyc.classList.add('hidden');
-    if (pill4Ben) pill4Ben.textContent = '3. Select Beneficiary';
-    if (pill6Pay) pill6Pay.textContent = '4. Make Payment';
-    if (pill7) pill7.textContent = '5. See Status & Dashboard';
+    if (pill2) pill2.textContent = '2. Corridors, Select Bank, Lock Rate & Submit';
+    if (pill6Pay) pill6Pay.textContent = '3. MITO Hosted Page (Beneficiary & Payment)';
+    if (pill7) pill7.textContent = '4. See Status & Dashboard';
     if (summaryStrip) {
       summaryStrip.style.background = '#eff6ff';
       summaryStrip.style.color = '#1e3a8a';
       summaryStrip.innerHTML =
-        `🔁 <strong>Active Flow 2 — Existing User (<code>${STATE.sender?.email || 'ahmed.diallo@mitonetwork.com'}</code> · KYC Passed):</strong> ` +
-        `Logs in → Checks rate → Locks rate (<code>POST /Exchange/rates</code>) → <strong>[MITO User Data &amp; Hosted KYC QR Skipped — <code>requiredAction.kyc: null</code>]</strong> → Selects beneficiary &amp; makes payment → Sees status (<code>/remittances/callback</code>) → Returns to dashboard`;
+        `🔁 <strong>Active Flow 2 — Existing User (<code>${STATE.sender?.email || 'ahmed.diallo@mitonetwork.com'}</code> · MITO <code>userId: ${STATE.sender?.mitoUserId || STATE.senderId}</code>):</strong> ` +
+        `Logs in → Get Corridors &amp; Rates (<code>GET /Exchange/corridors</code> + <code>GET /Exchange/affiliateRates</code>) → Select Bank (<code>GET /Providers</code>) → Lock Rate (<code>POST /Exchange/rates</code>) → Submit Transaction (<code>POST /Transactions/InitiateHostedTransaction</code>) → MITO Hosted Page Continues Flow (Beneficiary &amp; Payment) → Redirect URL (<code>/remittances/callback</code>)`;
     }
   } else {
-    // New User Flow: Registers -> Checks rates -> Locks rate -> Enters remaining MITO data -> Passes KYC -> Adds beneficiary -> Makes payment -> Sees status -> Returns to dashboard
-    const kycAlreadyPassed = STATE.sender && STATE.sender.kycStatus === 'PASSED';
-    if (pill1) pill1.textContent = '1. Register (New User)';
-    if (pill2) pill2.textContent = '2. Check & Lock Rate';
-    if (pill3Kyc) {
-      pill3Kyc.classList.remove('hidden');
-      pill3Kyc.textContent = kycAlreadyPassed ? '3. MITO User Data & KYC (✓ Passed)' : '3. MITO User Data & Pass KYC';
-    }
-    if (pill4Ben) pill4Ben.textContent = '4. Add Beneficiary';
-    if (pill6Pay) pill6Pay.textContent = '5. Make Payment';
-    if (pill7) pill7.textContent = '6. See Status & Dashboard';
+    if (pill1) pill1.textContent = '1. User Registration (1 Form)';
+    if (pill2) pill2.textContent = '2. Corridors, Select Bank, Lock Rate & Submit';
+    if (pill6Pay) pill6Pay.textContent = '3. MITO Hosted Page (Beneficiary & Payment)';
+    if (pill7) pill7.textContent = '4. See Status & Dashboard';
     if (summaryStrip) {
       summaryStrip.style.background = '#f0fdf4';
       summaryStrip.style.color = '#14532d';
       summaryStrip.innerHTML =
-        `🆕 <strong>Active Flow 1 — New User Registration:</strong> ` +
-        `Registers → Checks rates → Locks rate (<code>POST /Exchange/rates</code>) → Enters required/remaining data needed by MITO for user creation (<code>POST /Users</code>) → Passes KYC (Hosted KYC QR) → Adds beneficiary (<code>POST /Beneficiary</code>) → Makes payment → Sees status (<code>/remittances/callback</code>) → Returns to dashboard`;
+        `🆕 <strong>Active Flow — Unified Registration &amp; Bank-First Hosted Checkout:</strong> ` +
+        `User Registers (1 Form at Beginning: <code>POST /api/olowo/auth/register</code> + <code>POST /api/v1/mito/Users</code>) → Get Corridors &amp; Rates (<code>GET /Exchange/corridors</code> + <code>GET /Exchange/affiliateRates</code>) → Select Bank (<code>GET /Providers</code>) → Lock Rate (<code>POST /Exchange/rates</code>) → Submit Transaction (<code>POST /Transactions/InitiateHostedTransaction</code>) → MITO Hosted Page Continues Flow (Create Beneficiary &amp; Required Info + Payment) → Redirect URL (<code>/remittances/callback</code>)`;
     }
   }
 }
 
 function handleTopBarAuthClick() {
-  const isExisting =
-    STATE.flowMode === 'EXISTING_USER' ||
-    Boolean(STATE.sender && STATE.sender.isSubmittedToMito && STATE.sender.kycStatus === 'PASSED');
+  const isExisting = STATE.flowMode === 'EXISTING_USER';
   jumpToView(isExisting ? 'login' : 'register');
 }
 
@@ -280,11 +278,15 @@ function switchHighLevelFlowMode(mode) {
       phoneDialCode: '+44',
       phone: '7553039222',
       baseCurrency: 'GBP',
-      dob: '',
-      address: '',
-      city: '',
-      postcode: '',
+      dob: '1985-05-02',
+      buildingNumber: '23',
+      street: 'Holland Park',
+      address: '23 Holland Park',
+      city: 'London',
+      postcode: 'W11 3TD',
       country: 'GB',
+      countryIso3: 'GBR',
+      birthCountryIso3: 'GBR',
       isSubmittedToMito: false,
       kycStatus: 'NOT_STARTED',
       kycTier: 'NONE'
@@ -296,14 +298,9 @@ function switchHighLevelFlowMode(mode) {
 }
 
 function jumpToView(viewName) {
-  // USER RULE: "if KYC is passed then we will not show the user QR code. Mito will not send the hosted KYC link to balad, this page will skip"
-  if (
-    viewName === 'kyc' &&
-    STATE.sender &&
-    STATE.sender.kycStatus === 'PASSED' &&
-    !STATE.forceAllowKycEdit
-  ) {
-    viewName = 'beneficiary';
+  // USER RULE: "don't show any KYC page" — never display view-kyc!
+  if (viewName === 'kyc') {
+    viewName = 'dashboard';
   }
 
   const allViews = ['login', 'register', 'dashboard', 'kyc', 'beneficiary', 'summary', 'payment', 'success'];
@@ -330,16 +327,15 @@ function jumpToView(viewName) {
   if (viewName === 'dashboard') {
     refreshDashboardHeader();
     discoverActiveCorridors().then(() => fetchQuoteLive());
+    loadDashboardProvidersAndTypes();
     renderTransactionsList();
-  } else if (viewName === 'kyc') {
-    refreshKycCompletenessBanner();
   } else if (viewName === 'beneficiary') {
     loadStep4BeneficiaryMetadata();
   } else if (viewName === 'summary') {
     populateSummaryView();
   } else if (viewName === 'payment') {
     if (!STATE.paymentCheckoutUrl && !STATE.isInitiatingPayment) {
-      handleConfirmSummaryAndInitiatePayment();
+      handleConfirmSummaryAndInitiatePayment({ bankOnlyFlow: true });
     }
   } else if (viewName === 'success') {
     if (rateCountdownInterval) {
@@ -348,7 +344,7 @@ function jumpToView(viewName) {
     }
   }
 
-  // Show the side Rate Lock & Countdown Widget whenever a rate is locked and user is in active checkout steps (2..6)
+  // Show the side Rate Lock & Countdown Widget whenever a rate is locked and user is in active checkout steps
   const sideWidget = document.getElementById('rateLockSideWidget');
   if (sideWidget) {
     const showSideWidget = Boolean(STATE.lockedRate && STATE.rateRemainingSeconds > 0 && !['login', 'register', 'success'].includes(viewName));
@@ -367,23 +363,68 @@ function switchAuthMode(mode) {
 }
 
 // ============================================================================
-// STEP 1: USER REGISTRATION & SIGN IN (`/register` & `/login`)
+// STEP 1: UNIFIED USER / SENDER REGISTRATION FORM AT THE BEGINNING (`/register` & `/login`)
 // ============================================================================
+function syncRegFullNameFromParts() {
+  const firstEl = document.getElementById('regFirstName');
+  const lastEl = document.getElementById('regLastName');
+  const fullEl = document.getElementById('regFullName');
+  if (firstEl && lastEl && fullEl) {
+    const combined = `${firstEl.value.trim()} ${lastEl.value.trim()}`.trim();
+    if (combined) fullEl.value = combined;
+  }
+}
+
 function fillRegistrationPreset(presetKey) {
   document.querySelectorAll('.preset-chip').forEach((btn, idx) => {
     btn.classList.toggle('active', (presetKey === 'david_incomplete' && idx === 0) || (presetKey === 'ahmed_complete' && idx === 1));
   });
 
+  const setVal = (id, val) => {
+    const el = document.getElementById(id);
+    if (el) el.value = val;
+  };
+
   if (presetKey === 'ahmed_complete') {
-    document.getElementById('regFullName').value = 'Ahmed Diallo';
-    document.getElementById('regEmail').value = 'ahmed.diallo@mitonetwork.com';
-    document.getElementById('regPhone').value = '+44 7700900456';
+    setVal('regFirstName', 'Ahmed');
+    setVal('regMiddleName', '');
+    setVal('regLastName', 'Diallo');
+    setVal('regFullName', 'Ahmed Diallo');
+    setVal('regEmail', 'ahmed.diallo@mitonetwork.com');
+    setVal('regDialCode', '+44');
+    setVal('regPhone', '7700900456');
+    setVal('regGender', 'M');
+    setVal('regDob', '1988-05-14');
+    setVal('regBaseCurrency', 'GBP');
+    setVal('regEntityType', 'I');
+    setVal('regBuildingNumber', '23');
+    setVal('regSubStreet', '');
+    setVal('regStreet', 'Holland Park');
+    setVal('regCity', 'London');
+    setVal('regPostcode', 'W11 3TD');
+    setVal('regCountryIso3', 'GBR');
+    setVal('regBirthCountryIso3', 'GBR');
     STATE.presetMode = 'ahmed_complete';
     STATE.flowMode = 'EXISTING_USER';
   } else {
-    document.getElementById('regFullName').value = 'David Beckham';
-    document.getElementById('regEmail').value = 'mohammadmumtazkhan+24@example.com';
-    document.getElementById('regPhone').value = '+44 7553039222';
+    setVal('regFirstName', 'David');
+    setVal('regMiddleName', '');
+    setVal('regLastName', 'Beckham');
+    setVal('regFullName', 'David Beckham');
+    setVal('regEmail', 'mohammadmumtazkhan+24@example.com');
+    setVal('regDialCode', '+44');
+    setVal('regPhone', '7553039222');
+    setVal('regGender', 'M');
+    setVal('regDob', '1985-05-02');
+    setVal('regBaseCurrency', 'GBP');
+    setVal('regEntityType', 'I');
+    setVal('regBuildingNumber', '23');
+    setVal('regSubStreet', '');
+    setVal('regStreet', 'Holland Park');
+    setVal('regCity', 'London');
+    setVal('regPostcode', 'W11 3TD');
+    setVal('regCountryIso3', 'GBR');
+    setVal('regBirthCountryIso3', 'GBR');
     STATE.presetMode = 'david_incomplete';
     STATE.flowMode = 'NEW_USER';
   }
@@ -392,23 +433,57 @@ function fillRegistrationPreset(presetKey) {
 async function handleRegisterSubmit(event) {
   if (event) event.preventDefault();
 
-  const fullName = document.getElementById('regFullName').value.trim() || 'David Beckham';
-  const email = document.getElementById('regEmail').value.trim() || 'mohammadmumtazkhan+24@example.com';
-  const phoneDialCode = document.getElementById('regDialCode').value || '+44';
-  const rawPhone = document.getElementById('regPhone').value.replace(/^\+44\s*/, '').trim() || '7553039222';
-  const baseCurrency = document.getElementById('regBaseCurrency').value || 'GBP';
+  const firstName = (document.getElementById('regFirstName')?.value || '').trim() || 'David';
+  const middleName = (document.getElementById('regMiddleName')?.value || '').trim() || '';
+  const lastName = (document.getElementById('regLastName')?.value || '').trim() || 'Beckham';
+  const fullName = (document.getElementById('regFullName')?.value || '').trim() || `${firstName} ${lastName}`.trim();
+  const email = (document.getElementById('regEmail')?.value || '').trim() || 'mohammadmumtazkhan+24@example.com';
+  const phoneDialCode = document.getElementById('regDialCode')?.value || '+44';
+  const rawPhone = (document.getElementById('regPhone')?.value || '').replace(/^\+44\s*/, '').trim() || '7553039222';
+  const gender = document.getElementById('regGender')?.value || 'M';
+  const dob = (document.getElementById('regDob')?.value || '').trim() || '1985-05-02';
+  const baseCurrency = document.getElementById('regBaseCurrency')?.value || 'GBP';
+  const legalEntityType = document.getElementById('regEntityType')?.value || 'I';
+  const companyNumber = legalEntityType === 'B' ? (document.getElementById('regCompanyNumber')?.value || '').trim() : null;
+  const businessName = legalEntityType === 'B' ? (document.getElementById('regBusinessName')?.value || '').trim() : null;
+  const buildingNumber = (document.getElementById('regBuildingNumber')?.value || '').trim() || '23';
+  const subStreet = (document.getElementById('regSubStreet')?.value || '').trim() || '';
+  const street = (document.getElementById('regStreet')?.value || '').trim() || 'Holland Park';
+  const city = (document.getElementById('regCity')?.value || '').trim() || 'London';
+  const postcode = (document.getElementById('regPostcode')?.value || '').trim() || 'W11 3TD';
+  const countryIso3 = document.getElementById('regCountryIso3')?.value || 'GBR';
+  const birthCountryIso3 = document.getElementById('regBirthCountryIso3')?.value || 'GBR';
   const isAhmed = email.toLowerCase().includes('ahmed');
 
-  // Step 1 creates the local Olowo account ONLY (`POST /api/olowo/auth/register`).
-  // Per rule: "we will submit a user only when we collect the full info of the user" (in Step 3 for New Users!).
+  // 1A. Create / update Olowo account with ALL unified registration fields in one form (`POST /api/olowo/auth/register`)
   const payload = {
+    firstName,
+    middleName,
+    lastName,
     fullName,
     email,
     phoneDialCode,
     phone: rawPhone,
+    gender,
+    dob,
+    dateOfBirth: dob,
     baseCurrency,
+    legalEntityType,
+    companyNumber,
+    businessName,
+    buildingNumber,
+    subStreet,
+    street,
+    address: `${buildingNumber} ${street}`.trim(),
+    city,
+    addressCity: city,
+    postcode,
+    addressPostcode: postcode,
+    countryIso3,
+    addressCountryIso3: countryIso3,
+    birthCountryIso3,
     presetMode: isAhmed ? 'ahmed_complete' : (STATE.presetMode || 'david_incomplete'),
-    forceResetKyc: !isAhmed
+    forceResetKyc: false
   };
 
   const { ok, data } = await callApi('POST', '/api/olowo/auth/register', payload);
@@ -418,45 +493,58 @@ async function handleRegisterSubmit(event) {
       screenName: data.data.firstName
     };
     STATE.senderId = data.data.senderId;
-    STATE.flowMode = (STATE.sender.isSubmittedToMito && STATE.sender.kycStatus === 'PASSED') ? 'EXISTING_USER' : 'NEW_USER';
-    STATE.forceAllowKycEdit = false;
-    updateTopFlowBarForUserState();
-
-    // Pre-fill Step 3 inputs with the Olowo / MITO user info
-    document.getElementById('profLegalName').value = `${STATE.sender.firstName} ${STATE.sender.lastName}`;
-    document.getElementById('profScreenName').value = STATE.sender.firstName;
-    document.getElementById('profPhone').value = STATE.sender.phone;
-    document.getElementById('linkedDisplayScreenName').textContent = STATE.sender.firstName;
-    document.getElementById('linkedDisplayLegalName').textContent = `${STATE.sender.firstName} ${STATE.sender.lastName}`;
-    document.getElementById('linkedDisplayPhone').textContent = `${phoneDialCode} ${STATE.sender.phone}`;
-    document.getElementById('senderEmailInput').value = STATE.sender.email;
-    const fullPhoneEl = document.getElementById('senderPhoneFullInput');
-    if (fullPhoneEl) fullPhoneEl.value = `${phoneDialCode}${rawPhone}`;
-    document.getElementById('senderFirstNameInput').value = STATE.sender.firstName;
-    document.getElementById('senderLastNameInput').value = STATE.sender.lastName;
-    if (STATE.sender.dob) document.getElementById('senderDobInput').value = STATE.sender.dob;
-    if (STATE.sender.buildingNumber) document.getElementById('senderBuildingNumberInput').value = STATE.sender.buildingNumber;
-    if (STATE.sender.street || STATE.sender.address) {
-      document.getElementById('senderAddress1Input').value = String(STATE.sender.street || STATE.sender.address).replace(/^23\s+/, '');
-    }
-    if (STATE.sender.city) document.getElementById('senderCityInput').value = STATE.sender.city;
-    if (STATE.sender.postcode) document.getElementById('senderPostcodeInput').value = STATE.sender.postcode;
-    checkSenderDetailsChangedLive();
   }
 
-  // Navigate directly to Dashboard (Rate Check & Lock Rate) without auto-blocking with the Weather Modal
+  // 1B. Register user in MITO right at the beginning (`POST /api/v1/mito/Users`) using all fields from the unified registration form!
+  const createUserRes = await callApi('POST', '/api/v1/mito/Users', {
+    userId: STATE.sender.userId || STATE.sender.mitoUserId || STATE.senderId,
+    senderId: STATE.senderId,
+    olowoAccountId: STATE.sender.olowoAccountId || STATE.senderId,
+    countryIso3,
+    email,
+    phoneNumber: `${phoneDialCode}${rawPhone}`,
+    firstName,
+    middleName,
+    lastName,
+    gender,
+    legalEntityType,
+    companyNumber,
+    businessName,
+    dateOfBirth: dob,
+    buildingNumber,
+    buildingName: '',
+    subStreet,
+    street,
+    addressCity: city,
+    addressPostcode: postcode,
+    addressCountryIso3: countryIso3,
+    birthCountryIso3
+  });
+
+  if (createUserRes.ok && createUserRes.data && createUserRes.data.data) {
+    STATE.sender = {
+      ...STATE.sender,
+      ...createUserRes.data.data,
+      screenName: createUserRes.data.data.firstName || firstName
+    };
+    STATE.senderId =
+      createUserRes.data.data.userId ||
+      createUserRes.data.data.mitoUserId ||
+      createUserRes.data.data.senderId ||
+      STATE.senderId;
+  }
+
+  STATE.flowMode = isAhmed ? 'EXISTING_USER' : 'NEW_USER';
+  STATE.forceAllowKycEdit = false;
+  updateTopFlowBarForUserState();
+
+  // Navigate directly to Step 2: Dashboard (Get Corridors & Rates -> Select Bank -> Lock Rate -> Submit Transaction)
   jumpToView('dashboard');
   const alertEl = document.getElementById('dashAlertText');
   if (alertEl) {
-    if (STATE.sender.isSubmittedToMito && STATE.sender.kycStatus === 'PASSED') {
-      alertEl.innerHTML =
-        `🔁 <strong>Flow 2 (Existing User Signed In)</strong> · MITO <code>userId: ${STATE.sender.mitoUserId || STATE.senderId}</code> · ` +
-        `<strong>KYC Status: PASSED</strong> (MITO will NOT send Hosted KYC Link / QR — clicking Lock Rate &amp; Continue skips directly to Select Beneficiary!)`;
-    } else {
-      alertEl.innerHTML =
-        `🆕 <strong>Flow 1 (New User Registered)</strong> · Olowo ID: <code>${STATE.senderId}</code> · ` +
-        `<strong>Next: Check rate → Lock rate → Enter remaining data for MITO User Creation (<code>POST /Users</code>) → Pass KYC → Add Beneficiary → Make Payment</strong>`;
-    }
+    alertEl.innerHTML =
+      `✅ <strong>Step 1 Complete — User Registered in 1 Form (MITO <code>userId: ${STATE.sender.mitoUserId || STATE.sender.userId || STATE.senderId}</code> · <code>${STATE.sender.email}</code>)</strong> · ` +
+      `<strong>Step 2 Now Active:</strong> Check Corridors &amp; Rates → <strong>Select Recipient Bank (<code>GET /Providers</code>)</strong> → <strong>Lock Rate (<code>POST /Exchange/rates</code>)</strong> → <strong>Submit Transaction (<code>POST /Transactions/InitiateHostedTransaction</code>)</strong> (MITO Hosted Page continues flow for Beneficiary &amp; Payment)!`;
   }
   const weatherModal = document.getElementById('weatherModalOverlay');
   if (weatherModal) weatherModal.classList.add('hidden');
@@ -507,6 +595,64 @@ function setSendAmountQuick(amount) {
   handleSendAmountInput();
 }
 
+async function loadDashboardProvidersAndTypes() {
+  const countryEl = document.getElementById('dashProviderCountryLabel');
+  if (countryEl) countryEl.textContent = STATE.receiveCountryIso3 || 'NGA';
+
+  const epBadge = document.getElementById('dashProviderEndpointBadge');
+  if (epBadge) {
+    epBadge.textContent = `GET /api/v1/mito/Providers?receiveCountryIso3=${STATE.receiveCountryIso3}&serviceCode=MONEYTRANSFER&collectionMode=${STATE.collectionMode}`;
+  }
+
+  // 1. Load Banks / Providers based on receive country & collection mode
+  const provRes = await callApi(
+    'GET',
+    `/api/v1/mito/Providers?receiveCountryIso3=${encodeURIComponent(STATE.receiveCountryIso3)}&serviceCode=MONEYTRANSFER&collectionMode=${encodeURIComponent(STATE.collectionMode)}`
+  );
+  if (provRes.ok && Array.isArray(provRes.data?.data)) {
+    STATE.providers = provRes.data.data;
+    const defaultProv =
+      STATE.providers.find(p => p.id === (STATE.selectedDroplists.dashProvider && STATE.selectedDroplists.dashProvider.id)) ||
+      STATE.providers[0] ||
+      null;
+    populateDownwardDroplist('dashProvider', STATE.providers, defaultProv);
+    populateDownwardDroplist('provider', STATE.providers, defaultProv);
+
+    const noteBank = document.getElementById('noteSelectedBank');
+    if (noteBank && defaultProv) noteBank.textContent = defaultProv.name;
+    const rlwProv = document.getElementById('rlwProviderVal');
+    if (rlwProv && defaultProv) rlwProv.textContent = defaultProv.name;
+  }
+
+  // 2. Load Source of Funds & Transfer Reasons for InitiateHostedTransaction
+  if (!STATE.sourceOfFunds.length || !STATE.reasons.length) {
+    const typesRes = await callApi('GET', '/api/v1/mito/Lookups/types');
+    if (typesRes.ok && typesRes.data?.data) {
+      STATE.reasons = typesRes.data.data.reasons || typesRes.data.data.reason || [];
+      STATE.sourceOfFunds = typesRes.data.data.sourceOfFunds || [];
+      STATE.relationships = typesRes.data.data.relationships || [];
+    }
+  }
+
+  if (STATE.sourceOfFunds.length) {
+    const defaultSof =
+      STATE.sourceOfFunds.find(s => s.code === 'SALARY') || STATE.sourceOfFunds[0];
+    populateDownwardDroplist('dashSof', STATE.sourceOfFunds, STATE.selectedDroplists.dashSof || defaultSof);
+    populateDownwardDroplist('sof', STATE.sourceOfFunds, STATE.selectedDroplists.sof || defaultSof);
+  }
+  if (STATE.reasons.length) {
+    const defaultReason =
+      STATE.reasons.find(r => r.code === 'FOROWNEXPENDITURES') || STATE.reasons[0];
+    populateDownwardDroplist('dashReason', STATE.reasons, STATE.selectedDroplists.dashReason || defaultReason);
+    populateDownwardDroplist('reason', STATE.reasons, STATE.selectedDroplists.reason || defaultReason);
+  }
+  if (STATE.relationships.length) {
+    const defaultRel =
+      STATE.relationships.find(r => r.code === 'FAMILY') || STATE.relationships[0];
+    populateDownwardDroplist('relationship', STATE.relationships, STATE.selectedDroplists.relationship || defaultRel);
+  }
+}
+
 function setCollectionMode(mode) {
   STATE.collectionMode = mode;
   const isBank = mode === 'BANKACCOUNT';
@@ -538,6 +684,7 @@ function setCollectionMode(mode) {
   }
 
   fetchQuoteLive();
+  loadDashboardProvidersAndTypes();
   if (STATE.currentView === 'beneficiary') {
     loadStep4BeneficiaryMetadata();
   }
@@ -605,6 +752,7 @@ function handleCorridorOrCurrencyChange(source) {
   }
 
   fetchQuoteLive();
+  loadDashboardProvidersAndTypes();
 }
 
 async function discoverActiveCorridors(serviceCode = 'MONEYTRANSFER') {
@@ -673,11 +821,12 @@ async function fetchQuoteLive() {
     document.getElementById('rateBadgeText').textContent =
       `${sendSym}1.00 to ${recSym}${Number(STATE.customerRate).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · affiliate commercial rate`;
 
-    const tierText = q.requires_extended_kyc
-      ? 'Extended-KYC / Full-KYC (≥ £5,000 GBP)'
-      : 'Mini-KYC (< £5,000 GBP)';
+    const selBankName =
+      (STATE.selectedDroplists.dashProvider && STATE.selectedDroplists.dashProvider.name) ||
+      (STATE.selectedDroplists.provider && STATE.selectedDroplists.provider.name) ||
+      'Zenith Bank International';
     document.getElementById('corridorNotePill').innerHTML =
-      `Corridor: <strong>${STATE.sendCurrency} → ${STATE.receiveCurrency} (${STATE.receiveCountryName})</strong> · Mode: <strong>${STATE.collectionMode}</strong> · KYC Tier: <strong>${tierText}</strong>`;
+      `Corridor: <strong>${STATE.sendCurrency} → ${STATE.receiveCurrency} (${STATE.receiveCountryName})</strong> · Mode: <strong>${STATE.collectionMode}</strong> · Bank: <strong id="noteSelectedBank">${selBankName}</strong>`;
   }
 }
 
@@ -704,15 +853,22 @@ function swapCorridorDirection() {
 }
 
 // ============================================================================
-// CLICKING "CONTINUE TO CHECKOUT" -> IMMEDIATELY LOCKS RATE (`POST /api/v1/mito/Exchange/rates`),
-// STARTS LIVE EXPIRY COUNTDOWN ON THE SIDE, & PROCEEDS TO STEP 3
+// LOCK RATE (`POST /api/v1/mito/Exchange/rates`) WITH SELECTED BANK `providerId`
+// & SUBMIT TRANSACTION (`POST /api/v1/mito/Transactions/InitiateHostedTransaction`)
 // ============================================================================
 let rateCountdownInterval = null;
 
 async function lockExchangeRateAfterRateScreen() {
+  const selectedProv =
+    STATE.selectedDroplists.dashProvider ||
+    STATE.selectedDroplists.provider ||
+    STATE.providers[0] ||
+    null;
+
   const rateRes = await callApi('POST', '/api/v1/mito/Exchange/rates', {
     senderId: STATE.senderId,
     beneficiaryId: STATE.beneficiaryId || null,
+    providerId: selectedProv ? selectedProv.id : null,
     sendCurrency: STATE.sendCurrency,
     receiveCurrency: STATE.receiveCurrency,
     receiveCountryIso3: STATE.receiveCountryIso3,
@@ -727,11 +883,29 @@ async function lockExchangeRateAfterRateScreen() {
     STATE.customerRate = STATE.lockedRate.exchangeRate;
     STATE.receiveAmount = STATE.lockedRate.receiveAmount;
 
+    const pillEl = document.getElementById('dashLockedRateStatusPill');
+    if (pillEl) {
+      pillEl.classList.remove('hidden');
+      pillEl.innerHTML =
+        `🔒 <strong>Rate Locked!</strong> <code>rateId: ${STATE.rateId}</code> · ` +
+        `Selected Bank: <strong>${selectedProv ? selectedProv.name : 'Zenith Bank International'}</strong> (<code>providerId: ${selectedProv ? selectedProv.id : STATE.lockedRate.providerId}</code>) · ` +
+        `Rate: <strong>1 ${STATE.sendCurrency} = ${Number(STATE.lockedRate.exchangeRate).toLocaleString()} ${STATE.receiveCurrency}</strong> · Ready to Submit Transaction!`;
+    }
+
+    const rlwProv = document.getElementById('rlwProviderVal');
+    if (rlwProv && selectedProv) {
+      rlwProv.textContent = selectedProv.name;
+    }
+
     const totalSec = STATE.lockedRate.rateExpirySeconds || 900;
     startRateCountdownTimer(totalSec);
     return true;
   }
   return false;
+}
+
+async function handleLockRateOnlyOnDashboard() {
+  await lockExchangeRateAfterRateScreen();
 }
 
 function startRateCountdownTimer(totalSeconds = 900) {
@@ -814,6 +988,12 @@ function updateRateCountdownUi() {
     rateIdEl.textContent = STATE.rateId || 'Locked';
     rateIdEl.title = STATE.rateId || '';
   }
+
+  const rlwProv = document.getElementById('rlwProviderVal');
+  const selProv = STATE.selectedDroplists.dashProvider || STATE.selectedDroplists.provider;
+  if (rlwProv && selProv) {
+    rlwProv.textContent = selProv.name;
+  }
 }
 
 function simulateRateExpiryIn3Seconds() {
@@ -845,7 +1025,7 @@ function handleRateExpiredRedirect() {
     alertBanner.style.color = '#991b1b';
     alertText.innerHTML =
       `⏰ <strong>Locked Exchange Rate Expired (<code>${expiredRateId || 'rateId'}</code> reached 00:00)!</strong> ` +
-      `You have been redirected to the <strong>Rate &amp; Corridor screen</strong>. Fresh commercial rates have been loaded — click <strong>"Lock Rate &amp; Continue to checkout"</strong> to lock a new rate.`;
+      `You have been redirected to the <strong>Rate &amp; Corridor screen</strong>. Fresh commercial rates have been loaded — select your bank and click <strong>"Lock Rate &amp; Submit Transaction"</strong> to lock a new rate.`;
   }
 }
 
@@ -858,84 +1038,24 @@ async function handleContinueToCheckout() {
     alertBanner.style.color = '';
   }
 
-  // 1. Lock the exchange rate immediately after the Rate & Corridor screen!
-  await lockExchangeRateAfterRateScreen();
+  // Per User Rule:
+  // "user registers ---> Get corridors for showing rates to the user ---> let the user select the bank (get Providers based on the receive country/currency) ---> Lock rates ---> submit Transaction"
+  // "select bank only, then lock rate and submit Transaction ---> Mito will send a hosted page in response that will continue flow for creating beneficiary and any required info if needed."
+  STATE.beneficiaryId = null;
+  STATE.activeBeneficiary = null;
 
-  // 2. Check sender completeness & note corridor (Rule: at new user creation check emailId, after that check userId!)
-  const payload = {
-    userId: STATE.sender.userId || STATE.sender.mitoUserId || STATE.senderId,
-    senderId: STATE.senderId,
-    email: STATE.sender.email,
-    corridorCode: STATE.corridorCode,
-    sendCurrency: STATE.sendCurrency,
-    receiveCurrency: STATE.receiveCurrency,
-    receiveCountryIso3: STATE.receiveCountryIso3,
-    collectionMode: STATE.collectionMode,
-    sendAmount: STATE.sendAmount
-  };
+  const lockedOk = await lockExchangeRateAfterRateScreen();
+  if (!lockedOk) return;
 
-  const { ok, data } = await callApi('POST', '/api/v1/mito/Sender/CheckStatusAndCorridor', payload);
-  if (ok && data.data) {
-    STATE.sender = { ...STATE.sender, ...data.data.sender };
-    STATE.senderId = STATE.sender.userId || STATE.sender.mitoUserId || STATE.sender.senderId || STATE.senderId;
-    const check = data.data;
-
-    document.getElementById('kycCorridorBadge').textContent =
-      `${STATE.sendCurrency} → ${STATE.receiveCurrency} · ${STATE.sendCurrency} ${Number(STATE.sendAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })} · Locked Rate: ${STATE.rateId ? STATE.rateId.slice(0, 8) + '...' : ''}`;
-
-    // USER RULE:
-    // "for an existing sender don't show the sender selection or forms. Forms will only show for new user/beneficiary only"
-    // "once KYC of a user passes we will not do KYC again for him until his address or other details changes"
-    if (check.kycSkippedBecauseUnchanged && check.canProceedToBeneficiary) {
-      const skipBanner = document.getElementById('kycSkippedNoticeBanner');
-      if (skipBanner) {
-        skipBanner.classList.remove('hidden');
-        skipBanner.innerHTML = `
-          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
-            <div>
-              ✅ <strong>Flow 2 — Existing Verified User (<code>userId: ${STATE.senderId}</code> · <code>${STATE.sender.email}</code>) — KYC Passed &amp; Hosted KYC QR Skipped!</strong><br/>
-              <span style="font-size:12px;">Because KYC is already <strong>PASSED</strong>, MITO does <strong>not</strong> send the hosted KYC link (<code>requiredAction.kyc: null</code>) and this page skipped Step 3 completely. Select a saved beneficiary below and click <strong>"Select Beneficiary &amp; Make Payment →"</strong>!</span>
-            </div>
-            <button type="button" class="olowo-btn-cancel" style="padding:6px 12px;font-size:12px;background:#fff;" onclick="openSenderFormForAddressChange()">
-              ✏️ Change Sender Address / Details (Triggers Re-KYC)
-            </button>
-          </div>
-        `;
-      }
-      // Jump straight from Screen 2 (Rate & Lock Rate) to Step 4 (Beneficiary)!
-      jumpToView('beneficiary');
-      return;
-    }
-
-    const skipBanner = document.getElementById('kycSkippedNoticeBanner');
-    if (skipBanner) skipBanner.classList.add('hidden');
-
-    // New user (or user needing Extended-KYC upgrade): Show Step 3 directly on the New User Sender Form (`address`), skipping sender profile selection!
-    STATE.forceAllowKycEdit = true;
-    jumpToView('kyc');
-    switchSenderKycSubTab('address');
-    checkSenderDetailsChangedLive();
-  }
+  await handleConfirmSummaryAndInitiatePayment({ bankOnlyFlow: true });
 }
 
 function openSenderFormForAddressChange() {
-  STATE.forceAllowKycEdit = true;
-  const pill3Kyc = document.getElementById('flowPillStep3Kyc');
-  if (pill3Kyc) pill3Kyc.classList.remove('hidden');
-  jumpToView('kyc');
-  switchSenderKycSubTab('address');
-  checkSenderDetailsChangedLive();
+  jumpToView('register');
 }
 
 function handleBackFromBeneficiary() {
-  // If existing verified sender skipped Step 3, Back goes directly to Screen 2 (Rate & Lock Rate)
-  if (STATE.sender && STATE.sender.isSubmittedToMito && STATE.sender.kycStatus === 'PASSED') {
-    jumpToView('dashboard');
-  } else {
-    STATE.forceAllowKycEdit = true;
-    jumpToView('kyc');
-    switchSenderKycSubTab('address');
-  }
+  jumpToView('dashboard');
 }
 
 // ============================================================================
@@ -1602,7 +1722,7 @@ function renderDroplistOptions(key, items, query) {
 }
 
 function toggleDownwardDroplist(key) {
-  const keys = ['provider', 'relationship', 'reason', 'sof'];
+  const keys = ['dashProvider', 'dashSof', 'dashReason', 'provider', 'relationship', 'reason', 'sof'];
   keys.forEach(k => {
     const wrap = document.getElementById(`droplist-${k}`);
     if (!wrap) return;
@@ -1624,6 +1744,9 @@ function toggleDownwardDroplist(key) {
 
 function filterDownwardDroplist(key, query) {
   const map = {
+    dashProvider: STATE.providers,
+    dashSof: STATE.sourceOfFunds,
+    dashReason: STATE.reasons,
     provider: STATE.providers,
     relationship: STATE.relationships,
     reason: STATE.reasons,
@@ -1634,6 +1757,9 @@ function filterDownwardDroplist(key, query) {
 
 function selectDownwardDroplistItem(key, itemId) {
   const map = {
+    dashProvider: STATE.providers,
+    dashSof: STATE.sourceOfFunds,
+    dashReason: STATE.reasons,
     provider: STATE.providers,
     relationship: STATE.relationships,
     reason: STATE.reasons,
@@ -1644,6 +1770,27 @@ function selectDownwardDroplistItem(key, itemId) {
     STATE.selectedDroplists[key] = found;
     const labelEl = document.getElementById(`droplistSelected-${key}`);
     if (labelEl) labelEl.textContent = found.name;
+
+    if (key === 'dashProvider') {
+      STATE.selectedDroplists.provider = found;
+      const benLabel = document.getElementById('droplistSelected-provider');
+      if (benLabel) benLabel.textContent = found.name;
+      const noteBankEl = document.getElementById('noteSelectedBank');
+      if (noteBankEl) noteBankEl.textContent = found.name;
+      const rlwProvEl = document.getElementById('rlwProviderVal');
+      if (rlwProvEl) rlwProvEl.textContent = found.name;
+    } else if (key === 'provider') {
+      STATE.selectedDroplists.dashProvider = found;
+      const dashLabel = document.getElementById('droplistSelected-dashProvider');
+      if (dashLabel) dashLabel.textContent = found.name;
+      const noteBankEl = document.getElementById('noteSelectedBank');
+      if (noteBankEl) noteBankEl.textContent = found.name;
+    } else if (key === 'dashSof') {
+      STATE.selectedDroplists.sof = found;
+    } else if (key === 'dashReason') {
+      STATE.selectedDroplists.reason = found;
+    }
+
     if (STATE.savedBeneficiaries && STATE.savedBeneficiaries.length > 0 && (key === 'sof' || key === 'reason' || key === 'relationship')) {
       renderSavedBeneficiariesCards();
     }
@@ -1856,27 +2003,30 @@ function populateSummaryView() {
 // ============================================================================
 // STEPS 5, 6 & 7: LOCK EXCHANGE RATE -> INITIATE TRANSACTION -> LOAD PAYMENT URL
 // ============================================================================
-async function handleConfirmSummaryAndInitiatePayment() {
+async function handleConfirmSummaryAndInitiatePayment(options = {}) {
   if (STATE.isInitiatingPayment) return;
   STATE.isInitiatingPayment = true;
   try {
-    // Ensure beneficiary exists in MITO if user jumped directly to Summary
-    if (!STATE.beneficiaryId) {
-      const savedRes = await callApi('GET', `/api/v1/mito/Beneficiary?senderId=${encodeURIComponent(STATE.senderId)}`);
-      if (savedRes.ok && Array.isArray(savedRes.data?.data) && savedRes.data.data.length > 0) {
-        const firstBen = savedRes.data.data[0];
-        STATE.beneficiaryId = firstBen.beneficiaryId;
-        STATE.beneficiary = firstBen;
-      } else {
-        await handleCreateAndSaveBeneficiary();
-      }
+    // Bank-First Hosted Flow: Do NOT create a local beneficiary in our UI; MITO Hosted Page handles creating/selecting the beneficiary (`isBeneficiaryRequired: true`)!
+    const isBankOnlyFlow = Boolean(options && options.bankOnlyFlow);
+    if (!isBankOnlyFlow && !STATE.beneficiaryId) {
+      // Even if called without options, we no longer force local beneficiary creation
+      STATE.beneficiaryId = null;
     }
 
-    // Use the rateId locked right after Screen 2 (Rate & Corridor screen); if not locked yet or expired, lock now
+    // Use the rateId locked on Screen 2 (Corridors, Select Bank & Lock Rate); if not locked yet or expired, lock now
     if (!STATE.rateId || !STATE.lockedRate || (STATE.rateRemainingSeconds || 0) <= 0) {
       const lockedOk = await lockExchangeRateAfterRateScreen();
       if (!lockedOk) return;
     }
+
+    const selectedProvider =
+      STATE.selectedDroplists.dashProvider ||
+      STATE.selectedDroplists.provider ||
+      (STATE.providers && STATE.providers[0]) ||
+      null;
+    const providerId = selectedProvider ? selectedProvider.id : '';
+    const providerName = selectedProvider ? selectedProvider.name : 'Selected Recipient Bank';
 
     const customRedirectUrl =
       document.getElementById('sumRedirectUrlInput')?.value.trim() ||
@@ -1885,24 +2035,29 @@ async function handleConfirmSummaryAndInitiatePayment() {
       document.getElementById('sumPartnerRefInput')?.value.trim() ||
       `OLW-REF-${Date.now()}`;
     const narration =
+      document.getElementById('dashPaymentNarration')?.value.trim() ||
       document.getElementById('benPaymentNarration')?.value.trim() ||
       document.getElementById('sumNarrationInput')?.value.trim() ||
       'Remittance transfer via Olowo / Balad';
     const selectedSofCode =
+      (STATE.selectedDroplists.dashSof && STATE.selectedDroplists.dashSof.code) ||
       (STATE.selectedDroplists.sof && STATE.selectedDroplists.sof.code) ||
       (STATE.activeBeneficiary && STATE.activeBeneficiary.sourceOfFunds && STATE.activeBeneficiary.sourceOfFunds.code) ||
       'SALARY';
     const selectedReasonCode =
+      (STATE.selectedDroplists.dashReason && STATE.selectedDroplists.dashReason.code) ||
       (STATE.selectedDroplists.reason && STATE.selectedDroplists.reason.code) ||
       (STATE.activeBeneficiary && STATE.activeBeneficiary.reason && STATE.activeBeneficiary.reason.code) ||
       'FOROWNEXPENDITURES';
 
-    // Step 6: Initiate transaction submission using the locked rateId via POST /api/v1/mito/Transactions/InitiateHostedTransaction
-    // Backend calls MITO Staging POST /Transactions/InitiateHostedTransaction and extracts ONLY requiredAction.payment.link!
+    // Submit Transaction using the locked rateId + selected bank (providerId) via POST /api/v1/mito/Transactions/InitiateHostedTransaction
+    // MITO returns a hosted page in response (`requiredAction.beneficiary` + `requiredAction.payment`) that continues the flow for creating beneficiary & required info + payment!
     const txRes = await callApi('POST', '/api/v1/mito/Transactions/InitiateHostedTransaction', {
       userId: STATE.sender.userId || STATE.sender.mitoUserId || STATE.senderId,
       senderId: STATE.senderId,
-      beneficiaryId: STATE.beneficiaryId,
+      beneficiaryId: STATE.beneficiaryId || null,
+      providerId,
+      providerName,
       rateId: STATE.rateId,
       redirectUrl: customRedirectUrl,
       PartnerReferenceNumber: partnerRef,
@@ -1915,8 +2070,8 @@ async function handleConfirmSummaryAndInitiatePayment() {
     if (!txRes.ok || !txRes.data.data) return;
     const txData = txRes.data.data;
     STATE.transactionId = txData.transactionId;
-    // Load ONLY requiredAction.payment.link from the response!
     const paymentOnly = txData.requiredActionPayment || {};
+    const benAction = txData.requiredActionBeneficiary || (txData.requiredAction && txData.requiredAction.beneficiary) || {};
     const jCode = paymentOnly.journeyCode || txData.journeyCode || '';
     STATE.journeyCode = jCode;
     STATE.paymentUrl = paymentOnly.link || txData.paymentUrl;
@@ -1924,9 +2079,14 @@ async function handleConfirmSummaryAndInitiatePayment() {
       txData.paymentCheckoutUrl ||
       paymentOnly.directCheckoutLink ||
       `https://mito-checkout-1cca8e18297e.herokuapp.com/transaction?journeyCode=${encodeURIComponent(jCode)}`;
+    STATE.beneficiaryHostedUrl =
+      txData.beneficiaryHostedUrl ||
+      benAction.directBeneficiaryLink ||
+      benAction.link ||
+      `https://mito-checkout-1cca8e18297e.herokuapp.com/beneficiary?journeyCode=${encodeURIComponent(jCode)}`;
     STATE.redirectUrl = txData.redirectUrl || customRedirectUrl;
 
-    // Update Payment Screen Badges with requiredAction.payment.link and redirectUrl
+    // Update Payment Screen Badges with requiredAction.beneficiary.link, requiredAction.payment.link, and redirectUrl
     document.getElementById('payRateIdBadge').textContent = `${STATE.rateId} · ${STATE.transactionId}`;
     document.getElementById('stripRateId').textContent = STATE.rateId;
     document.getElementById('stripTxId').textContent = STATE.transactionId;
@@ -1934,6 +2094,8 @@ async function handleConfirmSummaryAndInitiatePayment() {
     if (refEl) refEl.textContent = txData.reference || '';
     const jnyEl = document.getElementById('stripJourneyCode');
     if (jnyEl) jnyEl.textContent = jCode;
+    const benHostEl = document.getElementById('stripBeneficiaryHostedUrl');
+    if (benHostEl) benHostEl.textContent = STATE.beneficiaryHostedUrl;
     document.getElementById('stripPaymentUrl').textContent = STATE.paymentUrl;
     const payLinkEl = document.getElementById('stripPaymentUrlLink');
     if (payLinkEl) payLinkEl.href = STATE.paymentCheckoutUrl || STATE.paymentUrl;
@@ -1942,10 +2104,10 @@ async function handleConfirmSummaryAndInitiatePayment() {
     const redirEl = document.getElementById('stripRedirectUrl');
     if (redirEl) redirEl.textContent = STATE.redirectUrl;
 
-    // Load the REAL live MITO Hosted Payment Link Page directly inside #mitoLivePaymentIframe!
+    // Load the REAL live MITO Hosted Page (`/transaction?journeyCode=...` which runs Recipient Selection -> Add Recipient -> Summary -> Payment when `isBeneficiaryRequired: true`) directly inside #mitoLivePaymentIframe!
     loadMitoLivePaymentIframe(STATE.paymentCheckoutUrl, 'checkout');
 
-    // Step 6: Open the MITO Hosted Payment Screen
+    // Open the MITO Hosted Page Screen
     jumpToView('payment');
   } finally {
     STATE.isInitiatingPayment = false;
@@ -1956,6 +2118,7 @@ function loadMitoLivePaymentIframe(targetUrl, mode = 'checkout') {
   const iframe = document.getElementById('mitoLivePaymentIframe');
   const urlBar = document.getElementById('mitoLiveIframeUrlBar');
   const btnCheckout = document.getElementById('btnMitoFrameModeCheckout');
+  const btnBeneficiary = document.getElementById('btnMitoFrameModeBeneficiary');
   const btnQr = document.getElementById('btnMitoFrameModeQr');
   if (iframe && targetUrl) {
     iframe.src = targetUrl;
@@ -1963,19 +2126,21 @@ function loadMitoLivePaymentIframe(targetUrl, mode = 'checkout') {
   if (urlBar && targetUrl) {
     urlBar.textContent = `🔒 ${targetUrl}`;
   }
-  if (btnCheckout && btnQr) {
-    if (mode === 'checkout') {
-      btnCheckout.className = 'olowo-btn-green sm';
-      btnCheckout.style.cssText = 'font-size:11.5px;padding:5px 10px;';
-      btnQr.className = 'olowo-btn-outline-green sm';
-      btnQr.style.cssText = 'font-size:11.5px;padding:5px 10px;background:#1e293b;color:#e2e8f0;border-color:#475569;';
+  const buttons = [
+    { el: btnCheckout, key: 'checkout' },
+    { el: btnBeneficiary, key: 'beneficiary' },
+    { el: btnQr, key: 'qr' }
+  ];
+  buttons.forEach(({ el, key }) => {
+    if (!el) return;
+    if (key === mode) {
+      el.className = 'olowo-btn-green sm';
+      el.style.cssText = 'font-size:11.5px;padding:5px 10px;';
     } else {
-      btnQr.className = 'olowo-btn-green sm';
-      btnQr.style.cssText = 'font-size:11.5px;padding:5px 10px;';
-      btnCheckout.className = 'olowo-btn-outline-green sm';
-      btnCheckout.style.cssText = 'font-size:11.5px;padding:5px 10px;background:#1e293b;color:#e2e8f0;border-color:#475569;';
+      el.className = 'olowo-btn-outline-green sm';
+      el.style.cssText = 'font-size:11.5px;padding:5px 10px;background:#1e293b;color:#e2e8f0;border-color:#475569;';
     }
-  }
+  });
   STATE.mitoFrameMode = mode;
 }
 
@@ -1985,6 +2150,11 @@ function switchMitoLivePaymentFrameMode(mode) {
       STATE.paymentUrl ||
       `https://mito-checkout-1cca8e18297e.herokuapp.com?journeyCode=${encodeURIComponent(STATE.journeyCode || '')}`;
     loadMitoLivePaymentIframe(qrUrl, 'qr');
+  } else if (mode === 'beneficiary') {
+    const benUrl =
+      STATE.beneficiaryHostedUrl ||
+      `https://mito-checkout-1cca8e18297e.herokuapp.com/beneficiary?journeyCode=${encodeURIComponent(STATE.journeyCode || '')}`;
+    loadMitoLivePaymentIframe(benUrl, 'beneficiary');
   } else {
     const checkoutUrl =
       STATE.paymentCheckoutUrl ||

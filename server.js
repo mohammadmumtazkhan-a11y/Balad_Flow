@@ -586,10 +586,31 @@ app.post('/api/olowo/auth/register', (req, res) => {
     userId,
     senderId,
     fullName = 'David Beckham',
+    firstName: reqFirstName,
+    middleName = '',
+    lastName: reqLastName,
     email = 'mohammadmumtazkhan+24@example.com',
     phoneDialCode = '+44',
     phone = '7553039222',
     baseCurrency = 'GBP',
+    gender = '',
+    legalEntityType = 'I',
+    companyNumber = '',
+    businessName = '',
+    dob = '',
+    dateOfBirth = '',
+    buildingNumber = '',
+    buildingName = '',
+    subStreet = '',
+    address = '',
+    street = '',
+    city = '',
+    addressCity = '',
+    postcode = '',
+    addressPostcode = '',
+    countryIso3 = 'GBR',
+    addressCountryIso3 = 'GBR',
+    birthCountryIso3 = 'GBR',
     presetMode = 'david_incomplete',
     forceResetKyc = false
   } = req.body;
@@ -630,9 +651,13 @@ app.post('/api/olowo/auth/register', (req, res) => {
   }
 
   const parts = String(fullName).trim().split(/\s+/);
-  const firstName = parts[0] || 'David';
-  const lastName = parts.slice(1).join(' ') || 'Beckham';
+  const firstName = (reqFirstName && String(reqFirstName).trim()) || parts[0] || 'David';
+  const lastName = (reqLastName && String(reqLastName).trim()) || parts.slice(1).join(' ') || 'Beckham';
   const cleanPhone = String(phone).replace(/^\+44\s*/, '').trim();
+  const resolvedDob = String(dateOfBirth || dob || '').trim();
+  const resolvedStreet = String(street || address || '').trim();
+  const resolvedCity = String(addressCity || city || '').trim();
+  const resolvedPostcode = String(addressPostcode || postcode || '').trim();
   const olowoAccountId =
     !forceResetKyc && existingByEmailOrId?.olowoAccountId
       ? existingByEmailOrId.olowoAccountId
@@ -655,38 +680,37 @@ app.post('/api/olowo/auth/register', (req, res) => {
     userId: olowoAccountId,
     senderId: olowoAccountId,
     olowoAccountId,
-    mitoUserId: null, // Will be created in Step 3 via POST /api/v1/mito/Users once full info is collected!
+    mitoUserId: null,
     isSubmittedToMito: false,
     sessionId: `sess-${firstName.toLowerCase()}-${crypto.randomBytes(3).toString('hex')}`,
     taxProfileId: String(Math.floor(100 + Math.random() * 900)),
     firstName,
-    middleName: '',
+    middleName: String(middleName || '').trim(),
     lastName,
     email: String(email).trim(),
     phoneDialCode,
     phone: cleanPhone,
     phoneNumber: `${phoneDialCode}${cleanPhone}`,
     baseCurrency,
-    // Full user info fields — empty until collected in Step 3!
-    gender: '',
-    legalEntityType: 'I',
-    companyNumber: '',
-    businessName: '',
-    dob: '',
-    dateOfBirth: '',
-    buildingNumber: '',
-    buildingName: '',
-    subStreet: '',
-    address: '',
-    street: '',
-    city: '',
-    addressCity: '',
-    postcode: '',
-    addressPostcode: '',
-    country: 'GB',
-    countryIso3: 'GBR',
-    addressCountryIso3: 'GBR',
-    birthCountryIso3: 'GBR',
+    gender: String(gender || '').trim(),
+    legalEntityType: legalEntityType || 'I',
+    companyNumber: companyNumber || '',
+    businessName: businessName || '',
+    dob: resolvedDob,
+    dateOfBirth: resolvedDob,
+    buildingNumber: String(buildingNumber || '').trim(),
+    buildingName: String(buildingName || '').trim(),
+    subStreet: String(subStreet || '').trim(),
+    address: resolvedStreet,
+    street: resolvedStreet,
+    city: resolvedCity,
+    addressCity: resolvedCity,
+    postcode: resolvedPostcode,
+    addressPostcode: resolvedPostcode,
+    country: countryIso3 === 'FRA' ? 'FR' : 'GB',
+    countryIso3: countryIso3 || 'GBR',
+    addressCountryIso3: addressCountryIso3 || countryIso3 || 'GBR',
+    birthCountryIso3: birthCountryIso3 || 'GBR',
     kycStatus: 'NOT_STARTED',
     kycTier: 'NONE',
     verifiedProfileSnapshot: null,
@@ -700,7 +724,7 @@ app.post('/api/olowo/auth/register', (req, res) => {
   res.json({
     code: 200,
     responseType: 'Success',
-    message: `Olowo account created (Email: ${localOlowoSender.email}, userId: ${olowoAccountId}). NOTE: User is NOT submitted to MITO (POST /api/v1/mito/Users) yet because DOB, Gender & Address are collected in Step 3.`,
+    message: `Olowo account created (Email: ${localOlowoSender.email}, userId: ${olowoAccountId}).`,
     mitoUserSubmitted: false,
     data: {
       ...localOlowoSender,
@@ -738,6 +762,7 @@ async function handleMitoCreateUser(req, res) {
     countryIso3 = 'GBR',
     email = 'mohammadmumtazkhan+24@example.com',
     phoneNumber,
+    mobileNumber,
     phone = '7553039222',
     phoneDialCode = '+44',
     firstName = 'David',
@@ -754,20 +779,22 @@ async function handleMitoCreateUser(req, res) {
     subStreet = '',
     street,
     address,
+    addressLine1,
     addressCity,
     city,
     addressPostcode,
     postcode,
+    postCode,
     addressCountryIso3 = 'GBR',
     birthCountryIso3 = 'GBR',
     baseCurrency = 'GBP'
   } = req.body;
 
   const resolvedDob = (dateOfBirth || dob || '').trim();
-  const resolvedStreet = (street || address || '').trim();
+  const resolvedStreet = (street || address || addressLine1 || '').trim();
   const resolvedCity = (addressCity || city || '').trim();
-  const resolvedPostcode = (addressPostcode || postcode || '').trim();
-  const cleanPhone = String(phoneNumber || `${phoneDialCode}${phone}`).replace(/[^0-9]/g, '');
+  const resolvedPostcode = (addressPostcode || postcode || postCode || '').trim();
+  const cleanPhone = String(phoneNumber || mobileNumber || `${phoneDialCode}${phone}`).replace(/[^0-9]/g, '');
 
   // Enforce the user's rule: We submit a user ONLY when we have collected the full info of the user!
   const missingFullFields = [];
@@ -1720,7 +1747,9 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
   const {
     userId: requestedUserId,
     senderId,
-    beneficiaryId,
+    beneficiaryId = null,
+    providerId: requestedProviderId = null,
+    providerName: requestedProviderName = null,
     rateId,
     redirectUrl = 'https://olowo.app/remittances/callback',
     PartnerReferenceNumber,
@@ -1737,13 +1766,17 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
     return res.status(404).json({ code: 404, responseType: 'Error', message: `User '${requestedUserId || senderId}' not found.` });
   }
 
-  const beneficiary = BENEFICIARIES.get(beneficiaryId);
-  if (!beneficiary) {
+  // If caller explicitly passed a non-empty beneficiaryId that is not in BENEFICIARIES, validate it;
+  // If beneficiaryId is omitted/null (user selected Bank only -> Lock Rate -> Submit Transaction),
+  // MITO Hosted Page handles creating/selecting the beneficiary (`isBeneficiaryRequired: true`)!
+  const hasExplicitBeneficiaryId = Boolean(beneficiaryId && String(beneficiaryId).trim() !== '');
+  const beneficiary = hasExplicitBeneficiaryId ? BENEFICIARIES.get(beneficiaryId) : null;
+  if (hasExplicitBeneficiaryId && !beneficiary) {
     return res.status(403).json({
       code: 403,
       responseType: 'Error',
       errorCode: 'ERR_INVALID_BENEFICIARY_MAPPING',
-      message: 'Beneficiary ID is missing.'
+      message: 'Beneficiary ID is invalid or not found.'
     });
   }
 
@@ -1759,14 +1792,19 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
 
   const realUserId = sender.mitoUserId || sender.userId || lockedRate.mitoUserId || MITO_STAGING_CONFIG.defaultQuoteUserId;
   const realProviderId =
-    (beneficiary.providerId && beneficiary.providerId.length > 20 ? beneficiary.providerId : null) ||
+    (requestedProviderId && String(requestedProviderId).length > 20 ? requestedProviderId : null) ||
+    (beneficiary && beneficiary.providerId && beneficiary.providerId.length > 20 ? beneficiary.providerId : null) ||
     lockedRate.providerId ||
     MITO_STAGING_CONFIG.defaultNgaProviderId;
+  const matchedProviderObj =
+    PROVIDERS.find(p => p.id === realProviderId || p.id === requestedProviderId) ||
+    (beneficiary ? { id: beneficiary.providerId, name: beneficiary.providerName } : null) ||
+    { id: realProviderId, name: requestedProviderName || 'Zenith Bank International' };
 
-  // If the rate was locked after Screen 2 before the new user's mitoUserId was created in Step 3,
-  // bind a fresh rateId for that specific userId on MITO Staging so /Transactions/InitiateHostedTransaction matches the userId
+  // If the rate was locked before the user's mitoUserId was bound on MITO Staging,
+  // bind a fresh rateId for that specific userId + providerId on MITO Staging so /Transactions/InitiateHostedTransaction matches
   let finalStagingRateId = lockedRate.rateId;
-  if (lockedRate.mitoUserId !== realUserId) {
+  if (lockedRate.mitoUserId !== realUserId || lockedRate.providerId !== realProviderId) {
     try {
       const rebindCall = await callMitoStagingApi('POST', '/exchange/rates', {
         userId: realUserId,
@@ -1784,6 +1822,7 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
         finalStagingRateId = rebindCall.data.data.rateId;
         lockedRate.rateId = finalStagingRateId;
         lockedRate.mitoUserId = realUserId;
+        lockedRate.providerId = realProviderId;
         LOCKED_RATES.set(finalStagingRateId, lockedRate);
       }
     } catch (_) {}
@@ -1801,7 +1840,8 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
   const matchedReason =
     (reqReasonCode &&
       MITO_TYPES.reasons.find(r => r.code === reqReasonCode || r.id === reqReasonCode || r.requirementUuid === reqReasonCode)) ||
-    (beneficiary.reason &&
+    (beneficiary &&
+      beneficiary.reason &&
       MITO_TYPES.reasons.find(
         r => r.code === beneficiary.reason.code || r.id === beneficiary.reason.id || r.requirementUuid === beneficiary.reason.id
       )) ||
@@ -1810,18 +1850,21 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
   const matchedSof =
     (reqSourceOfFundCode &&
       MITO_TYPES.sourceOfFunds.find(s => s.code === reqSourceOfFundCode || s.id === reqSourceOfFundCode)) ||
-    (beneficiary.sourceOfFunds &&
+    (beneficiary &&
+      beneficiary.sourceOfFunds &&
       MITO_TYPES.sourceOfFunds.find(s => s.code === beneficiary.sourceOfFunds.code || s.id === beneficiary.sourceOfFunds.id)) ||
     MITO_TYPES.sourceOfFunds[0];
 
-  // Persist user's form-selected reason and sourceOfFunds on the beneficiary record
-  beneficiary.reason = matchedReason;
-  beneficiary.sourceOfFunds = matchedSof;
+  if (beneficiary) {
+    beneficiary.reason = matchedReason;
+    beneficiary.sourceOfFunds = matchedSof;
+  }
 
   const reasonCode = matchedReason.code || 'FOROWNEXPENDITURES';
   const sourceOfFundCode = matchedSof.code || 'SALARY';
 
-  // Exact request body per MITO InitiateHostedTransaction specification (MITO rates: include rateId, omit receiveAmount & rate)
+  // Exact request body per MITO InitiateHostedTransaction specification
+  // When beneficiary is not passed, MITO returns a hosted page that continues the flow for creating beneficiary & any required info!
   const mitoTransactionPayload = {
     serviceCode: 'MONEYTRANSFER',
     collectionMode: lockedRate.collectionMode === 'MOBILEMONEY' ? 'BANKACCOUNT' : lockedRate.collectionMode,
@@ -1839,7 +1882,7 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
     sourceOfFundCode,
     paymentNarration,
     webhookUrl,
-    beneficiaryId: beneficiary.beneficiaryId
+    ...(beneficiary && beneficiary.beneficiaryId ? { beneficiaryId: beneficiary.beneficiaryId } : {})
   };
 
   let stagingResult = null;
@@ -1849,9 +1892,8 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
     if (stagingResult.ok && stagingResult.data && stagingResult.data.data) {
       liveTxData = stagingResult.data.data;
     } else {
-      // Fallback retry with verified MITO Staging user + beneficiary + fresh rateId so live payment link is always real
+      // Fallback retry with verified MITO Staging user + fresh rateId (omitting beneficiaryId when not provided so MITO hosted page continues beneficiary flow)
       const fallbackUserId = MITO_STAGING_CONFIG.defaultQuoteUserId;
-      const fallbackBenId = MITO_STAGING_CONFIG.defaultNgaBeneficiaryId || '529ee99a-77e6-47e3-bb0e-b66ee851a8ee';
       const fallbackRateCall = await callMitoStagingApi('POST', '/exchange/rates', {
         userId: fallbackUserId,
         serviceCode: 'MONEYTRANSFER',
@@ -1870,7 +1912,6 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
       const retryPayload = {
         ...mitoTransactionPayload,
         userId: fallbackUserId,
-        beneficiaryId: fallbackBenId,
         rateId: fallbackRateId,
         PartnerReferenceNumber: `${partnerReferenceNumber}-R`
       };
@@ -1887,20 +1928,20 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
   const transactionId = (liveTxData && liveTxData.retailTransactionId) || `TXN-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
   const reference = (liveTxData && liveTxData.reference) || String(Math.floor(100000 + Math.random() * 900000));
 
-  // Extract ONLY `requiredAction.payment.link` from the InitiateHostedTransaction response!
-  // When sender.kycStatus === 'PASSED', MITO does NOT send the hosted KYC link to Balad (requiredAction.kyc = null).
   const rawRequiredAction = (liveTxData && liveTxData.requiredAction) || null;
   const paymentAction = (rawRequiredAction && rawRequiredAction.payment) || null;
+  const beneficiaryAction = (rawRequiredAction && rawRequiredAction.beneficiary) || null;
+  const kycAction = (rawRequiredAction && rawRequiredAction.kyc) || null;
   const isKycAlreadyPassed = sender.kycStatus === 'PASSED';
   const requiredAction = {
-    kyc: isKycAlreadyPassed ? null : (rawRequiredAction && rawRequiredAction.kyc) || null,
-    beneficiary: null,
+    kyc: isKycAlreadyPassed ? null : kycAction,
+    beneficiary: beneficiaryAction,
     payment: paymentAction
   };
   if (liveTxData && liveTxData.requiredAction && isKycAlreadyPassed) {
     liveTxData.requiredAction.kyc = null;
-    liveTxData.requiredAction.beneficiary = null;
   }
+
   const paymentUrl =
     (paymentAction && paymentAction.link) ||
     (liveTxData && liveTxData.paymentUrl) ||
@@ -1909,6 +1950,8 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
     (paymentAction && paymentAction.journeyCode) ||
     (paymentUrl.match(/journeyCode=([^&]+)/) ? paymentUrl.match(/journeyCode=([^&]+)/)[1] : `JNY-${reference}`);
   const paymentCheckoutUrl = `https://mito-checkout-1cca8e18297e.herokuapp.com/transaction?journeyCode=${encodeURIComponent(journeyCode)}`;
+  const beneficiaryJourneyCode = (beneficiaryAction && beneficiaryAction.journeyCode) || journeyCode;
+  const beneficiaryHostedUrl = `https://mito-checkout-1cca8e18297e.herokuapp.com/beneficiary?journeyCode=${encodeURIComponent(beneficiaryJourneyCode)}`;
   const linkToken = (paymentAction && paymentAction.linkToken) || (liveTxData && liveTxData.linkToken) || null;
 
   const txRecord = {
@@ -1917,6 +1960,7 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
     reference,
     partnerReferenceNumber: (liveTxData && liveTxData.partnerReferenceNumber) || partnerReferenceNumber,
     journeyCode,
+    beneficiaryJourneyCode,
     linkToken,
     senderId: sender.senderId,
     userId: realUserId,
@@ -1925,15 +1969,18 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
     senderEmail: sender.email,
     senderKycStatus: sender.kycStatus,
     senderKycTier: sender.kycTier,
-    beneficiaryId: beneficiary.beneficiaryId,
-    beneficiaryName: `${beneficiary.fields.firstName || ''} ${beneficiary.fields.lastName || ''}`.trim(),
-    providerName: beneficiary.providerName,
-    collectionMode: beneficiary.collectionMode,
+    beneficiaryId: beneficiary ? beneficiary.beneficiaryId : null,
+    beneficiaryName: beneficiary
+      ? `${beneficiary.fields.firstName || ''} ${beneficiary.fields.lastName || ''}`.trim()
+      : 'Created in MITO Hosted Page',
+    providerId: realProviderId,
+    providerName: matchedProviderObj.name,
+    collectionMode: lockedRate.collectionMode,
     reasonCode,
-    reasonName: beneficiary.reason.name,
+    reasonName: matchedReason.name,
     sourceOfFundCode,
-    sourceOfFundsName: beneficiary.sourceOfFunds.name,
-    relationshipName: beneficiary.relationship.name,
+    sourceOfFundsName: matchedSof.name,
+    relationshipName: beneficiary && beneficiary.relationship ? beneficiary.relationship.name : 'Family',
     rateId: lockedRate.rateId,
     sendCurrency: lockedRate.sendCurrency,
     receiveCurrency: lockedRate.receiveCurrency,
@@ -1944,7 +1991,8 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
     totalPayable: lockedRate.totalPayable,
     paymentUrl,
     paymentCheckoutUrl,
-    loadedActionType: 'payment (requiredAction.payment.link ONLY)',
+    beneficiaryHostedUrl,
+    loadedActionType: beneficiary ? 'payment (requiredAction.payment.link)' : 'beneficiary+payment (MITO Hosted Page)',
     requiredActionPaymentOnly: paymentAction
       ? { ...paymentAction, directCheckoutLink: paymentCheckoutUrl }
       : {
@@ -1965,7 +2013,7 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
   res.json({
     code: 200,
     responseType: 'Success',
-    message: `Hosted Transaction initiated via POST /api/v1/mito/Transactions/InitiateHostedTransaction! Loaded ONLY requiredAction.payment.link (${paymentUrl}) · redirectUrl: ${resolvedRedirectUrl}`,
+    message: `Hosted Transaction initiated via POST /api/v1/mito/Transactions/InitiateHostedTransaction! MITO Hosted Page (${paymentCheckoutUrl}) ready to continue flow for beneficiary & payment · redirectUrl: ${resolvedRedirectUrl}`,
     stagingCall: stagingResult,
     data: {
       transactionId,
@@ -1973,10 +2021,15 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
       reference,
       partnerReferenceNumber: txRecord.partnerReferenceNumber,
       journeyCode,
+      beneficiaryJourneyCode,
       linkToken,
       rateId: lockedRate.rateId,
+      providerId: realProviderId,
+      providerName: matchedProviderObj.name,
       paymentUrl,
       paymentCheckoutUrl,
+      beneficiaryHostedUrl,
+      requiredAction,
       requiredActionPayment: txRecord.requiredActionPaymentOnly,
       redirectUrl: resolvedRedirectUrl,
       transaction: txRecord
