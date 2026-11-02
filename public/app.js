@@ -2160,6 +2160,8 @@ async function handleConfirmSummaryAndInitiatePayment(options = {}) {
     STATE.transactionId = txData.transactionId;
     const paymentOnly = txData.requiredActionPayment || (txData.requiredAction && txData.requiredAction.payment) || {};
     const benAction = txData.requiredActionBeneficiary || (txData.requiredAction && txData.requiredAction.beneficiary) || {};
+    STATE.requiredActionPayment = paymentOnly;
+    STATE.requiredActionBeneficiary = benAction;
 
     const benJourneyCode = benAction.journeyCode || txData.beneficiaryJourneyCode || txData.journeyCode || '';
     const payJourneyCode = paymentOnly.journeyCode || txData.paymentJourneyCode || benJourneyCode;
@@ -2287,10 +2289,15 @@ function hideBeneficiaryFallbackPage() {
   if (iframeShell) iframeShell.classList.remove('hidden');
 }
 
-// Once Beneficiary is completed -> Automatically load the Payment Link (`requiredAction.payment.link`)!
-async function handleBeneficiaryCompletedLoadPaymentLink(skipApiCall = false) {
+// Once Beneficiary is completed -> Automatically load the Payment page already sent in the API response in the `payment` object (`requiredAction.payment`)!
+async function handleBeneficiaryCompletedLoadPaymentLink(skipApiCall = false, paymentObjOverride = null) {
   stopBeneficiaryStatusAutoPolling();
+  if (STATE.hostedStage === 'payment') return;
   STATE.hostedStage = 'payment';
+
+  if (paymentObjOverride && typeof paymentObjOverride === 'object') {
+    STATE.requiredActionPayment = { ...(STATE.requiredActionPayment || {}), ...paymentObjOverride };
+  }
 
   if (!skipApiCall && STATE.transactionId) {
     await callApi('POST', '/api/v1/mito/Transactions/BeneficiaryOutcome', {
@@ -2299,20 +2306,46 @@ async function handleBeneficiaryCompletedLoadPaymentLink(skipApiCall = false) {
     });
   }
 
+  const paymentObj = STATE.requiredActionPayment || {};
+  const resolvedPayJourneyCode = paymentObj.journeyCode || STATE.paymentJourneyCode || STATE.journeyCode || '';
+  if (resolvedPayJourneyCode) {
+    STATE.paymentJourneyCode = resolvedPayJourneyCode;
+  }
+
   hideBeneficiaryFallbackPage();
   updateBeneficiaryStageBanner('beneficiary_completed');
 
   const jnyEl = document.getElementById('stripJourneyCode');
   if (jnyEl && STATE.paymentJourneyCode) jnyEl.textContent = STATE.paymentJourneyCode;
-  const openBtnEl = document.getElementById('btnOpenLiveMitoPaymentLink');
-  if (openBtnEl) openBtnEl.href = STATE.paymentQrUrl || STATE.paymentUrl;
 
-  // Load the Payment Link (`requiredAction.payment.link`, normalized to `/?journeyCode=<paymentJourneyCode>` so QR renders cleanly)
-  const targetPaymentUrl =
-    STATE.paymentQrUrl ||
+  // Use the Payment page link from the `payment` object (`requiredAction.payment`) already sent in the InitiateHostedTransaction API response!
+  const rawPaymentLinkFromApi =
+    paymentObj.link ||
+    STATE.paymentRawLink ||
     STATE.paymentUrl ||
-    `https://mito-checkout-1cca8e18297e.herokuapp.com/?journeyCode=${encodeURIComponent(STATE.paymentJourneyCode || STATE.journeyCode || '')}`;
-  loadMitoLivePaymentIframe(targetPaymentUrl, 'paymentQr');
+    `https://mito-checkout-1cca8e18297e.herokuapp.com/retail-transaction?journeyCode=${encodeURIComponent(STATE.paymentJourneyCode)}`;
+  const normalizedPaymentQrUrl =
+    paymentObj.qrCodeLink ||
+    STATE.paymentQrUrl ||
+    (STATE.paymentJourneyCode
+      ? `https://mito-checkout-1cca8e18297e.herokuapp.com/?journeyCode=${encodeURIComponent(STATE.paymentJourneyCode)}`
+      : rawPaymentLinkFromApi);
+
+  STATE.paymentRawLink = rawPaymentLinkFromApi;
+  STATE.paymentQrUrl = normalizedPaymentQrUrl;
+  STATE.paymentUrl = rawPaymentLinkFromApi;
+
+  const stripPayUrlEl = document.getElementById('stripPaymentUrl');
+  if (stripPayUrlEl) stripPayUrlEl.textContent = rawPaymentLinkFromApi;
+  const stripPayLinkEl = document.getElementById('stripPaymentUrlLink');
+  if (stripPayLinkEl) stripPayLinkEl.href = normalizedPaymentQrUrl;
+  const openBtnEl = document.getElementById('btnOpenLiveMitoPaymentLink');
+  if (openBtnEl) {
+    openBtnEl.href = normalizedPaymentQrUrl;
+    openBtnEl.innerHTML = '🔗 Open Payment Link (<code>requiredAction.payment.link</code>) ↗';
+  }
+
+  loadMitoLivePaymentIframe(normalizedPaymentQrUrl, 'paymentQr');
 }
 
 // In case Beneficiary fails -> Show Fallback Page & Message, and if allowed, allow user to add details again OR abort transaction & land on Dashboard
@@ -2443,7 +2476,7 @@ function startBeneficiaryStatusAutoPolling() {
   stopBeneficiaryStatusAutoPolling();
   if (!STATE.transactionId) return;
 
-  STATE.beneficiaryPollTimerId = setInterval(async () => {
+  const checkStatusOnce = async () => {
     if (STATE.currentView !== 'payment' || STATE.hostedStage !== 'beneficiary' || !STATE.transactionId) {
       return;
     }
@@ -2452,14 +2485,16 @@ function startBeneficiaryStatusAutoPolling() {
       if (!r.ok) return;
       const json = await r.json();
       const d = json && json.data ? json.data : null;
-      if (!d) return;
+      if (!d || STATE.hostedStage !== 'beneficiary') return;
       if (d.isCompleted) {
-        await handleBeneficiaryCompletedLoadPaymentLink(true);
+        await handleBeneficiaryCompletedLoadPaymentLink(true, d.requiredActionPayment || null);
       } else if (d.isFailed) {
         await handleBeneficiaryFailedShowFallback(d.isRetryAllowed !== false, d.failureReason || '', true);
       }
     } catch (_) {}
-  }, 3500);
+  };
+
+  STATE.beneficiaryPollTimerId = setInterval(checkStatusOnce, 1500);
 }
 
 function stopBeneficiaryStatusAutoPolling() {
@@ -2470,20 +2505,28 @@ function stopBeneficiaryStatusAutoPolling() {
 }
 
 // Listen for postMessage events from the MITO Hosted iframe (`BALAD_BENEFICIARY_CALLBACK`, `MITO_LINK_SUCCESS`, `MITO_LINK_EXIT`)
+// Note: MITO's hosted page sends `JSON.stringify({ type: 'MITO_LINK_SUCCESS', ... })` as a string, so we parse string messages as well!
 window.addEventListener('message', e => {
-  const msg = e && e.data ? e.data : null;
+  let msg = e && e.data ? e.data : null;
+  if (typeof msg === 'string') {
+    try {
+      msg = JSON.parse(msg);
+    } catch (_) {
+      return;
+    }
+  }
   if (!msg || typeof msg !== 'object') return;
 
   if (msg.type === 'BALAD_BENEFICIARY_CALLBACK') {
     if (msg.status === 'COMPLETED') {
-      handleBeneficiaryCompletedLoadPaymentLink(true);
+      handleBeneficiaryCompletedLoadPaymentLink(true, msg.requiredActionPayment || null);
     } else if (msg.status === 'FAILED') {
       handleBeneficiaryFailedShowFallback(msg.isRetryAllowed !== false, msg.failureReason || '', true);
     }
   } else if (msg.type === 'MITO_LINK_SUCCESS' && STATE.hostedStage === 'beneficiary') {
-    handleBeneficiaryCompletedLoadPaymentLink(false);
+    handleBeneficiaryCompletedLoadPaymentLink(false, STATE.requiredActionPayment || null);
   } else if (msg.type === 'MITO_LINK_EXIT' && STATE.hostedStage === 'beneficiary') {
-    const reason = (msg.payload && (msg.payload.reason || msg.payload.status)) || 'Beneficiary step exited or failed';
+    const reason = (msg.error && (msg.error.reason || msg.error.status)) || (msg.payload && (msg.payload.reason || msg.payload.status)) || 'Beneficiary step exited or failed';
     handleBeneficiaryFailedShowFallback(true, `MITO Hosted Page exited (${reason}). You can add the beneficiary details again or abort the transaction.`, false);
   }
 });

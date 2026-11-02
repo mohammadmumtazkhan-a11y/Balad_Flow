@@ -2246,7 +2246,12 @@ function handleMitoRedirectCallback(req, res) {
   const reqJourneyCode = String(req.query.journeyCode || '').trim();
   const isBeneficiaryCallback =
     rawOrderStatus === 'BENEFICIARYCOMPLETED' ||
-    (tx && reqJourneyCode && reqJourneyCode === tx.beneficiaryJourneyCode && reqJourneyCode !== tx.paymentJourneyCode);
+    (tx && reqJourneyCode && reqJourneyCode === tx.beneficiaryJourneyCode && reqJourneyCode !== tx.paymentJourneyCode) ||
+    (tx &&
+      tx.beneficiaryJourneyCode &&
+      tx.beneficiaryJourneyCode !== tx.paymentJourneyCode &&
+      !req.query.transactionId &&
+      (tx.beneficiaryStatus === 'PENDING' || !rawOrderStatus || rawOrderStatus === 'COMPLETED'));
 
   if (isBeneficiaryCallback && tx) {
     const isBenFailed =
@@ -2273,6 +2278,7 @@ function handleMitoRedirectCallback(req, res) {
         data: {
           beneficiaryStatus: tx.beneficiaryStatus,
           isBeneficiaryRetryAllowed: tx.isBeneficiaryRetryAllowed,
+          requiredActionPayment: tx.requiredActionPaymentOnly,
           paymentQrUrl: tx.paymentQrUrl,
           paymentDirectUrl: tx.paymentDirectUrl,
           paymentRawLink: tx.paymentRawLink || tx.paymentUrl,
@@ -2281,32 +2287,38 @@ function handleMitoRedirectCallback(req, res) {
       });
     }
 
-    // If loaded inside the iframe, notify the parent window via postMessage and auto-redirect to the Payment Link (or show fallback)
-    const targetPayUrl = tx.paymentQrUrl || tx.paymentUrl;
+    // If loaded inside the iframe, notify the parent window via postMessage and auto-redirect to the Payment Link from `requiredAction.payment`
+    const targetPayUrl =
+      (tx.requiredActionPaymentOnly && (tx.requiredActionPaymentOnly.qrCodeLink || tx.requiredActionPaymentOnly.link)) ||
+      tx.paymentQrUrl ||
+      tx.paymentRawLink ||
+      tx.paymentUrl;
     return res.send(`<!DOCTYPE html>
 <html>
-<head><meta charset="utf-8"><title>MITO Beneficiary Callback</title></head>
+<head><meta charset="utf-8"><title>MITO Beneficiary Completed — Loading Payment Page</title></head>
 <body style="font-family:sans-serif;text-align:center;padding:40px;background:#f8fafc;color:#0f172a;">
   <script>
     try {
+      var callbackPayload = {
+        type: 'BALAD_BENEFICIARY_CALLBACK',
+        status: ${JSON.stringify(tx.beneficiaryStatus)},
+        orderStatus: ${JSON.stringify(rawOrderStatus || 'BENEFICIARYCOMPLETED')},
+        isRetryAllowed: ${JSON.stringify(Boolean(tx.isBeneficiaryRetryAllowed))},
+        failureReason: ${JSON.stringify(tx.beneficiaryFailureReason || '')},
+        transactionId: ${JSON.stringify(tx.transactionId)},
+        paymentJourneyCode: ${JSON.stringify(tx.paymentJourneyCode)},
+        requiredActionPayment: ${JSON.stringify(tx.requiredActionPaymentOnly || null)},
+        paymentQrUrl: ${JSON.stringify(tx.paymentQrUrl)},
+        paymentDirectUrl: ${JSON.stringify(tx.paymentDirectUrl)},
+        paymentRawLink: ${JSON.stringify(tx.paymentRawLink || tx.paymentUrl)}
+      };
       if (window.parent && window.parent !== window) {
-        window.parent.postMessage({
-          type: 'BALAD_BENEFICIARY_CALLBACK',
-          status: ${JSON.stringify(tx.beneficiaryStatus)},
-          orderStatus: ${JSON.stringify(rawOrderStatus || 'BENEFICIARYCOMPLETED')},
-          isRetryAllowed: ${JSON.stringify(Boolean(tx.isBeneficiaryRetryAllowed))},
-          failureReason: ${JSON.stringify(tx.beneficiaryFailureReason || '')},
-          transactionId: ${JSON.stringify(tx.transactionId)},
-          paymentJourneyCode: ${JSON.stringify(tx.paymentJourneyCode)},
-          paymentQrUrl: ${JSON.stringify(tx.paymentQrUrl)},
-          paymentDirectUrl: ${JSON.stringify(tx.paymentDirectUrl)},
-          paymentRawLink: ${JSON.stringify(tx.paymentRawLink || tx.paymentUrl)}
-        }, '*');
+        window.parent.postMessage(callbackPayload, '*');
       }
     } catch (e) {}
-    ${!isBenFailed ? `setTimeout(function(){ window.location.replace(${JSON.stringify(targetPayUrl)}); }, 150);` : ''}
+    ${!isBenFailed ? `window.location.replace(${JSON.stringify(targetPayUrl)});` : ''}
   </script>
-  <h3>${isBenFailed ? 'Beneficiary Step Failed — Opening Fallback Options...' : '✓ Beneficiary Completed! Loading Payment Link...'}</h3>
+  <h3>${isBenFailed ? 'Beneficiary Step Failed — Opening Fallback Options...' : '✓ Beneficiary Completed! Auto-loading Payment Page...'}</h3>
 </body>
 </html>`);
   }
@@ -2415,15 +2427,28 @@ app.get('/api/v1/mito/Transactions/:id/beneficiary-status', async (req, res) => 
       );
       const mStatus = benMod ? String(benMod.moduleStatus || '').trim().toUpperCase() : '';
 
+      const hasAttachedBeneficiary = Boolean(
+        liveValidate &&
+          ((liveValidate.beneficiary &&
+            (liveValidate.beneficiary.beneficiaryId ||
+              liveValidate.beneficiary.firstName ||
+              liveValidate.beneficiary.acctNumber)) ||
+            liveValidate.isBeneficiaryRequired === false)
+      );
+
       if (
         jStatus === 'COMPLETED' ||
+        jStatus === 'APPROVED' ||
         oStatus === 'BENEFICIARYCOMPLETED' ||
+        oStatus === 'COMPLETED' ||
         mStatus === 'COMPLETED' ||
-        (liveValidate && liveValidate.beneficiary && liveValidate.beneficiary.beneficiaryId)
+        mStatus === 'APPROVED' ||
+        hasAttachedBeneficiary
       ) {
         tx.beneficiaryStatus = 'COMPLETED';
+        tx.loadedActionType = 'payment (requiredAction.payment.link loaded after Beneficiary completed)';
         if (liveValidate && liveValidate.beneficiary) {
-          tx.beneficiaryId = liveValidate.beneficiary.beneficiaryId;
+          tx.beneficiaryId = liveValidate.beneficiary.beneficiaryId || tx.beneficiaryId;
           tx.beneficiaryName =
             `${liveValidate.beneficiary.firstName || ''} ${liveValidate.beneficiary.lastName || ''}`.trim() ||
             tx.beneficiaryName;
@@ -2455,6 +2480,7 @@ app.get('/api/v1/mito/Transactions/:id/beneficiary-status', async (req, res) => 
       isFailed: tx.beneficiaryStatus === 'FAILED',
       isRetryAllowed: tx.isBeneficiaryRetryAllowed !== false,
       failureReason: tx.beneficiaryFailureReason || null,
+      requiredActionPayment: tx.requiredActionPaymentOnly || (tx.rawRequiredAction && tx.rawRequiredAction.payment) || null,
       paymentQrUrl: tx.paymentQrUrl,
       paymentDirectUrl: tx.paymentDirectUrl,
       paymentRawLink: tx.paymentRawLink || tx.paymentUrl,
