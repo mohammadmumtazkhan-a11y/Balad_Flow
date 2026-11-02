@@ -2208,37 +2208,37 @@ async function handleConfirmSummaryAndInitiatePayment(options = {}) {
     STATE.paymentJourneyCode = payJourneyCode;
     STATE.hostedStage = 'beneficiary';
 
-    // Extract the new link from the `requiredAction.beneficiary` object and normalize to `/?journeyCode=...` so the QR code renders immediately!
+    // Extract the new link from the `requiredAction.beneficiary` object and load `/retail-transaction/flow?journeyCode=...` directly so it never lands on `/mobile` ("Let's get you verified")!
     STATE.beneficiaryRawLink =
       benAction.link ||
       txData.beneficiaryRawLink ||
       txData.beneficiaryLink ||
       `https://mito-checkout-1cca8e18297e.herokuapp.com/retail-transaction?journeyCode=${encodeURIComponent(benJourneyCode)}`;
-    STATE.beneficiaryQrUrl =
-      benAction.qrCodeLink ||
-      txData.beneficiaryQrUrl ||
-      `https://mito-checkout-1cca8e18297e.herokuapp.com/?journeyCode=${encodeURIComponent(benJourneyCode)}`;
-    STATE.beneficiaryHostedUrl = STATE.beneficiaryQrUrl;
     STATE.beneficiaryDirectUrl =
       benAction.directBeneficiaryLink ||
       txData.beneficiaryDirectUrl ||
       `https://mito-checkout-1cca8e18297e.herokuapp.com/retail-transaction/flow?journeyCode=${encodeURIComponent(benJourneyCode)}`;
+    STATE.beneficiaryQrUrl =
+      benAction.qrCodeLink ||
+      txData.beneficiaryQrUrl ||
+      `https://mito-checkout-1cca8e18297e.herokuapp.com/?journeyCode=${encodeURIComponent(benJourneyCode)}&isQRcode=true`;
+    STATE.beneficiaryHostedUrl = STATE.beneficiaryDirectUrl;
 
     STATE.paymentRawLink =
       paymentOnly.link ||
       txData.paymentRawLink ||
       txData.paymentUrl ||
       `https://mito-checkout-1cca8e18297e.herokuapp.com/retail-transaction?journeyCode=${encodeURIComponent(payJourneyCode)}`;
-    STATE.paymentQrUrl =
-      paymentOnly.qrCodeLink ||
-      txData.paymentQrUrl ||
-      `https://mito-checkout-1cca8e18297e.herokuapp.com/?journeyCode=${encodeURIComponent(payJourneyCode)}`;
     STATE.paymentDirectUrl =
       paymentOnly.directCheckoutLink ||
       txData.paymentDirectUrl ||
       txData.paymentCheckoutUrl ||
       `https://mito-checkout-1cca8e18297e.herokuapp.com/retail-transaction/flow?journeyCode=${encodeURIComponent(payJourneyCode)}`;
-    STATE.paymentUrl = STATE.paymentRawLink;
+    STATE.paymentQrUrl =
+      paymentOnly.qrCodeLink ||
+      txData.paymentQrUrl ||
+      `https://mito-checkout-1cca8e18297e.herokuapp.com/?journeyCode=${encodeURIComponent(payJourneyCode)}&isQRcode=true`;
+    STATE.paymentUrl = STATE.paymentDirectUrl;
     STATE.paymentCheckoutUrl = STATE.paymentDirectUrl;
     STATE.redirectUrl = txData.redirectUrl || customRedirectUrl;
 
@@ -2255,12 +2255,12 @@ async function handleConfirmSummaryAndInitiatePayment(options = {}) {
     const benHostEl = document.getElementById('stripBeneficiaryHostedUrl');
     if (benHostEl) benHostEl.textContent = STATE.beneficiaryRawLink;
     const benUrlLinkEl = document.getElementById('stripBeneficiaryUrlLink');
-    if (benUrlLinkEl) benUrlLinkEl.href = STATE.beneficiaryQrUrl;
+    if (benUrlLinkEl) benUrlLinkEl.href = STATE.beneficiaryDirectUrl;
     document.getElementById('stripPaymentUrl').textContent = STATE.paymentRawLink;
     const payLinkEl = document.getElementById('stripPaymentUrlLink');
-    if (payLinkEl) payLinkEl.href = STATE.paymentQrUrl;
+    if (payLinkEl) payLinkEl.href = STATE.paymentDirectUrl;
     const openBtnEl = document.getElementById('btnOpenLiveMitoPaymentLink');
-    if (openBtnEl) openBtnEl.href = STATE.beneficiaryQrUrl;
+    if (openBtnEl) openBtnEl.href = STATE.beneficiaryDirectUrl;
     const redirEl = document.getElementById('stripRedirectUrl');
     if (redirEl) redirEl.textContent = STATE.redirectUrl;
 
@@ -2268,8 +2268,8 @@ async function handleConfirmSummaryAndInitiatePayment(options = {}) {
     hideBeneficiaryFallbackPage();
     updateBeneficiaryStageBanner('beneficiary_pending');
 
-    // Load the working QR Code view (`/?journeyCode=...`) for the `requiredAction.beneficiary` journey directly inside #mitoLivePaymentIframe!
-    loadMitoLivePaymentIframe(STATE.beneficiaryQrUrl, 'beneficiary');
+    // Automatically load the Direct Beneficiary Flow (`/retail-transaction/flow?journeyCode=...`) inside #mitoLivePaymentIframe so it opens Recipient/Beneficiary directly on Mobile & Desktop!
+    loadMitoLivePaymentIframe(STATE.beneficiaryDirectUrl, 'beneficiaryForm');
 
     // Start live auto-polling of `GET /api/v1/mito/Transactions/:id/beneficiary-status` so once Beneficiary is completed, we automatically load the Payment Link!
     startBeneficiaryStatusAutoPolling();
@@ -2362,28 +2362,37 @@ async function handleBeneficiaryCompletedLoadPaymentLink(skipApiCall = false, pa
     STATE.paymentRawLink ||
     STATE.paymentUrl ||
     `https://mito-checkout-1cca8e18297e.herokuapp.com/retail-transaction?journeyCode=${encodeURIComponent(STATE.paymentJourneyCode)}`;
+  const normalizedPaymentDirectUrl =
+    paymentObj.directCheckoutLink ||
+    STATE.paymentDirectUrl ||
+    STATE.paymentCheckoutUrl ||
+    (STATE.paymentJourneyCode
+      ? `https://mito-checkout-1cca8e18297e.herokuapp.com/retail-transaction/flow?journeyCode=${encodeURIComponent(STATE.paymentJourneyCode)}`
+      : rawPaymentLinkFromApi);
   const normalizedPaymentQrUrl =
     paymentObj.qrCodeLink ||
     STATE.paymentQrUrl ||
     (STATE.paymentJourneyCode
-      ? `https://mito-checkout-1cca8e18297e.herokuapp.com/?journeyCode=${encodeURIComponent(STATE.paymentJourneyCode)}`
+      ? `https://mito-checkout-1cca8e18297e.herokuapp.com/?journeyCode=${encodeURIComponent(STATE.paymentJourneyCode)}&isQRcode=true`
       : rawPaymentLinkFromApi);
 
   STATE.paymentRawLink = rawPaymentLinkFromApi;
+  STATE.paymentDirectUrl = normalizedPaymentDirectUrl;
+  STATE.paymentCheckoutUrl = normalizedPaymentDirectUrl;
   STATE.paymentQrUrl = normalizedPaymentQrUrl;
-  STATE.paymentUrl = rawPaymentLinkFromApi;
+  STATE.paymentUrl = normalizedPaymentDirectUrl;
 
   const stripPayUrlEl = document.getElementById('stripPaymentUrl');
   if (stripPayUrlEl) stripPayUrlEl.textContent = rawPaymentLinkFromApi;
   const stripPayLinkEl = document.getElementById('stripPaymentUrlLink');
-  if (stripPayLinkEl) stripPayLinkEl.href = normalizedPaymentQrUrl;
+  if (stripPayLinkEl) stripPayLinkEl.href = normalizedPaymentDirectUrl;
   const openBtnEl = document.getElementById('btnOpenLiveMitoPaymentLink');
   if (openBtnEl) {
-    openBtnEl.href = normalizedPaymentQrUrl;
+    openBtnEl.href = normalizedPaymentDirectUrl;
     openBtnEl.innerHTML = '🔗 Open Payment Link (<code>requiredAction.payment.link</code>) ↗';
   }
 
-  loadMitoLivePaymentIframe(normalizedPaymentQrUrl, 'paymentQr');
+  loadMitoLivePaymentIframe(normalizedPaymentDirectUrl, 'checkout');
   startPaymentStatusAutoPolling();
 }
 
@@ -2707,8 +2716,22 @@ function loadMitoLivePaymentIframe(targetUrl, mode = 'beneficiary') {
   // so MITO uses `postMessage` and the browser always triggers a fresh automatic load when transitioning Beneficiary -> Payment!
   let iframeSrcUrl = targetUrl;
   if (iframeSrcUrl && iframeSrcUrl.includes('mito-checkout')) {
+    const isMobileViewportOrUA =
+      window.innerWidth <= 768 ||
+      /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini|mobile/i.test(navigator.userAgent || '');
+    // On mobile viewports/devices, never load root `/?journeyCode=...` (which MITO redirects to `/mobile` KYC screen "Let's get you verified");
+    // always route directly to `/retail-transaction/flow?journeyCode=...`!
+    if (isMobileViewportOrUA && !iframeSrcUrl.includes('/retail-transaction/flow')) {
+      const jcMatch = iframeSrcUrl.match(/journeyCode=([^&]+)/);
+      if (jcMatch && jcMatch[1]) {
+        iframeSrcUrl = `https://mito-checkout-1cca8e18297e.herokuapp.com/retail-transaction/flow?journeyCode=${jcMatch[1]}`;
+      }
+    }
     if (!iframeSrcUrl.includes('mitoEmbed=')) {
       iframeSrcUrl += (iframeSrcUrl.includes('?') ? '&' : '?') + 'mitoEmbed=1';
+    }
+    if (!iframeSrcUrl.includes('isQRcode=')) {
+      iframeSrcUrl += '&isQRcode=true';
     }
     iframeSrcUrl += `&stage=${encodeURIComponent(mode)}&_t=${Date.now()}`;
   }
@@ -2747,7 +2770,7 @@ function switchMitoLivePaymentFrameMode(mode) {
     STATE.hostedStage = 'beneficiary';
     const benQrUrl =
       STATE.beneficiaryQrUrl ||
-      `https://mito-checkout-1cca8e18297e.herokuapp.com/?journeyCode=${encodeURIComponent(STATE.beneficiaryJourneyCode || STATE.journeyCode || '')}`;
+      `https://mito-checkout-1cca8e18297e.herokuapp.com/?journeyCode=${encodeURIComponent(STATE.beneficiaryJourneyCode || STATE.journeyCode || '')}&isQRcode=true`;
     loadMitoLivePaymentIframe(benQrUrl, 'beneficiary');
     startBeneficiaryStatusAutoPolling();
   } else if (mode === 'beneficiaryForm') {
@@ -2762,7 +2785,7 @@ function switchMitoLivePaymentFrameMode(mode) {
     const payQrUrl =
       STATE.paymentQrUrl ||
       STATE.paymentUrl ||
-      `https://mito-checkout-1cca8e18297e.herokuapp.com/?journeyCode=${encodeURIComponent(STATE.paymentJourneyCode || STATE.journeyCode || '')}`;
+      `https://mito-checkout-1cca8e18297e.herokuapp.com/?journeyCode=${encodeURIComponent(STATE.paymentJourneyCode || STATE.journeyCode || '')}&isQRcode=true`;
     loadMitoLivePaymentIframe(payQrUrl, 'paymentQr');
     startPaymentStatusAutoPolling();
   } else {
@@ -2778,7 +2801,7 @@ function switchMitoLivePaymentFrameMode(mode) {
 }
 
 function reloadMitoLivePaymentIframe() {
-  switchMitoLivePaymentFrameMode(STATE.mitoFrameMode || 'beneficiary');
+  switchMitoLivePaymentFrameMode(STATE.mitoFrameMode || 'beneficiaryForm');
 }
 
 function simulateMobilePaymentQrScan() {

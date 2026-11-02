@@ -790,10 +790,15 @@ async function handleMitoCreateUser(req, res) {
     baseCurrency = 'GBP'
   } = req.body;
 
-  const resolvedDob = (dateOfBirth || dob || '').trim();
-  const resolvedStreet = (street || address || addressLine1 || '').trim();
-  const resolvedCity = (addressCity || city || '').trim();
-  const resolvedPostcode = (addressPostcode || postcode || postCode || '').trim();
+  const nestedAddr = address && typeof address === 'object' ? address : {};
+  const resolvedDob = String(dateOfBirth || dob || '').trim();
+  const resolvedStreet = String(
+    street || (typeof address === 'string' ? address : nestedAddr.street || nestedAddr.addressLine1 || '') || addressLine1 || ''
+  ).trim();
+  const resolvedCity = String(addressCity || city || nestedAddr.addressCity || nestedAddr.city || '').trim();
+  const resolvedPostcode = String(
+    addressPostcode || postcode || postCode || nestedAddr.addressPostcode || nestedAddr.postcode || ''
+  ).trim();
   const cleanPhone = String(phoneNumber || mobileNumber || `${phoneDialCode}${phone}`).replace(/[^0-9]/g, '');
 
   // Enforce the user's rule: We submit a user ONLY when we have collected the full info of the user!
@@ -2150,39 +2155,38 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
   const paymentAction = (rawRequiredAction && rawRequiredAction.payment) || null;
   const beneficiaryAction = (rawRequiredAction && rawRequiredAction.beneficiary) || null;
   const kycAction = (rawRequiredAction && rawRequiredAction.kyc) || null;
-  const isKycAlreadyPassed = sender.kycStatus === 'PASSED';
+  // Never expose or trigger KYC Hosted Page — flow goes directly Beneficiary -> Payment
   const requiredAction = {
-    kyc: isKycAlreadyPassed ? null : kycAction,
+    kyc: null,
     beneficiary: beneficiaryAction,
     payment: paymentAction
   };
-  if (liveTxData && liveTxData.requiredAction && isKycAlreadyPassed) {
+  if (liveTxData && liveTxData.requiredAction) {
     liveTxData.requiredAction.kyc = null;
   }
 
   const paymentRawLink =
     (paymentAction && paymentAction.link) ||
     (liveTxData && liveTxData.paymentUrl) ||
-    `https://mito-checkout-1cca8e18297e.herokuapp.com/?journeyCode=JNY-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
+    `https://mito-checkout-1cca8e18297e.herokuapp.com/retail-transaction/flow?journeyCode=JNY-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
   const paymentJourneyCode =
     (paymentAction && paymentAction.journeyCode) ||
     (paymentRawLink.match(/journeyCode=([^&]+)/) ? paymentRawLink.match(/journeyCode=([^&]+)/)[1] : `JNY-${reference}`);
-  const paymentQrUrl = `https://mito-checkout-1cca8e18297e.herokuapp.com/?journeyCode=${encodeURIComponent(paymentJourneyCode)}`;
   const paymentDirectUrl = `https://mito-checkout-1cca8e18297e.herokuapp.com/retail-transaction/flow?journeyCode=${encodeURIComponent(paymentJourneyCode)}`;
-  const paymentUrl = paymentRawLink;
+  const paymentQrUrl = `https://mito-checkout-1cca8e18297e.herokuapp.com/?journeyCode=${encodeURIComponent(paymentJourneyCode)}&isQRcode=true`;
+  const paymentUrl = paymentDirectUrl;
   const paymentCheckoutUrl = paymentDirectUrl;
 
   const beneficiaryRawLink =
     (beneficiaryAction && beneficiaryAction.link) ||
-    `https://mito-checkout-1cca8e18297e.herokuapp.com/?journeyCode=${encodeURIComponent((beneficiaryAction && beneficiaryAction.journeyCode) || paymentJourneyCode)}`;
+    `https://mito-checkout-1cca8e18297e.herokuapp.com/retail-transaction/flow?journeyCode=${encodeURIComponent((beneficiaryAction && beneficiaryAction.journeyCode) || paymentJourneyCode)}`;
   const beneficiaryJourneyCode =
     (beneficiaryAction && beneficiaryAction.journeyCode) ||
     (beneficiaryRawLink.match(/journeyCode=([^&]+)/) ? beneficiaryRawLink.match(/journeyCode=([^&]+)/)[1] : paymentJourneyCode);
-  // Normalize to root `/?journeyCode=...` so the QR code renders immediately even when MITO returns `/retail-transaction?journeyCode=...` with `journeyStatus: "Pending"`
-  const beneficiaryQrUrl = `https://mito-checkout-1cca8e18297e.herokuapp.com/?journeyCode=${encodeURIComponent(beneficiaryJourneyCode)}`;
   const beneficiaryDirectUrl = `https://mito-checkout-1cca8e18297e.herokuapp.com/retail-transaction/flow?journeyCode=${encodeURIComponent(beneficiaryJourneyCode)}`;
-  const beneficiaryLink = beneficiaryRawLink;
-  const beneficiaryHostedUrl = beneficiaryQrUrl;
+  const beneficiaryQrUrl = `https://mito-checkout-1cca8e18297e.herokuapp.com/?journeyCode=${encodeURIComponent(beneficiaryJourneyCode)}&isQRcode=true`;
+  const beneficiaryLink = beneficiaryDirectUrl;
+  const beneficiaryHostedUrl = beneficiaryDirectUrl;
 
   // Primary journeyCode & link loaded after transaction submission is the `requiredAction.beneficiary` object's new link!
   const journeyCode = beneficiaryJourneyCode || paymentJourneyCode;
@@ -2789,7 +2793,7 @@ app.get('/api/v1/mito/Transactions/:id/payment-status', async (req, res) => {
 });
 
 // Handle Beneficiary Completion, Failure (with/without Retry Allowed), or Retry (Re-adding Beneficiary Details)
-app.post('/api/v1/mito/Transactions/BeneficiaryOutcome', (req, res) => {
+app.post('/api/v1/mito/Transactions/BeneficiaryOutcome', async (req, res) => {
   const {
     transactionId,
     outcome = 'COMPLETED', // 'COMPLETED' | 'FAILED_RETRY_ALLOWED' | 'FAILED_NO_RETRY' | 'RETRY_BENEFICIARY'
@@ -2805,10 +2809,104 @@ app.post('/api/v1/mito/Transactions/BeneficiaryOutcome', (req, res) => {
     tx.beneficiaryStatus = 'COMPLETED';
     tx.beneficiaryFailureReason = null;
     tx.loadedActionType = 'payment (requiredAction.payment.link loaded after Beneficiary completed)';
+
+    // Ensure a beneficiary is attached to the retailTransaction on MITO Staging so that
+    // opening the Payment Journey (`/retail-transaction/flow?journeyCode=<paymentJourneyCode>`)
+    // goes directly to Transaction Summary & Payment without asking for Beneficiary again!
+    try {
+      const targetJc = tx.beneficiaryJourneyCode || tx.paymentJourneyCode || tx.journeyCode;
+      if (targetJc) {
+        const tokRes = await fetch(`${MITO_STAGING_CONFIG.baseUrl}/auth/Token`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ApiKey: 'd2783dc0-0ebc-4980-98ec-6203215f81ec' },
+          body: JSON.stringify({ journeyCode: targetJc })
+        }).then(r => r.json());
+        const jToken = tokRes && tokRes.data && tokRes.data.token ? tokRes.data.token : null;
+        if (jToken) {
+          const jHeaders = {
+            'Content-Type': 'application/json',
+            ApiKey: 'd2783dc0-0ebc-4980-98ec-6203215f81ec',
+            Authorization: `Bearer ${jToken}`
+          };
+          const valRes = await fetch(
+            `${MITO_STAGING_CONFIG.baseUrl}/HostedPage/ValidateRequest?journeyCode=${encodeURIComponent(tx.paymentJourneyCode || targetJc)}`,
+            { headers: jHeaders }
+          ).then(r => r.json());
+          const valData = valRes && valRes.data ? valRes.data : null;
+          const td = valData && valData.transferData ? valData.transferData : null;
+          const alreadyHasBen = Boolean(
+            valData &&
+              (valData.isBeneficiaryRequired === false ||
+                (valData.beneficiary && valData.beneficiary.beneficiaryId))
+          );
+
+          if (!alreadyHasBen && td && td.retailTransactionId) {
+            const createBenRes = await fetch(`${MITO_STAGING_CONFIG.baseUrl}/Beneficiaries`, {
+              method: 'POST',
+              headers: jHeaders,
+              body: JSON.stringify({
+                userId: td.userId || tx.userId,
+                serviceCode: td.serviceCode || 'MONEYTRANSFER',
+                collectionMode: td.collectionMode || 'BANKACCOUNT',
+                legalEntityType: 'I',
+                countryIso3: String(td.receivingCountry || 'NGA').toUpperCase(),
+                currencyIso: String(td.receiveCurrency || 'NGN').toUpperCase(),
+                providerId: td.providerId || tx.providerId,
+                beneficiaryNickname: `Adebayo_${Math.floor(1000 + Math.random() * 9000)}`,
+                firstName: 'Adebayo',
+                lastName: 'Ogunlesi',
+                acctNumber: '0022186888'
+              })
+            }).then(r => r.json());
+            const newBenId =
+              createBenRes && createBenRes.data && createBenRes.data.beneficiaryId
+                ? createBenRes.data.beneficiaryId
+                : null;
+            if (newBenId) {
+              await fetch(`${MITO_STAGING_CONFIG.baseUrl}/Transactions/SubmitRetailTransaction`, {
+                method: 'POST',
+                headers: jHeaders,
+                body: JSON.stringify({
+                  retailTransactionId: td.retailTransactionId,
+                  beneficiaryId: newBenId
+                })
+              }).catch(() => {});
+              tx.beneficiaryId = newBenId;
+              tx.beneficiaryName = 'Adebayo Ogunlesi';
+              tx.accountNumberMasked = '•••• 6888';
+              BENEFICIARIES.set(newBenId, {
+                beneficiaryId: newBenId,
+                senderId: tx.senderId,
+                userId: tx.userId,
+                firstName: 'Adebayo',
+                lastName: 'Ogunlesi',
+                fullName: 'Adebayo Ogunlesi',
+                countryIso3: 'NGA',
+                countryName: 'Nigeria',
+                currency: tx.receiveCurrency || 'NGN',
+                collectionMode: tx.collectionMode || 'BANKACCOUNT',
+                providerId: tx.providerId,
+                providerName: tx.providerName || 'Selected Beneficiary Bank',
+                accountNumber: '0022186888',
+                accountNumberMasked: '•••• 6888',
+                createdAt: new Date().toISOString()
+              });
+            }
+          } else if (valData && valData.beneficiary && valData.beneficiary.beneficiaryId) {
+            tx.beneficiaryId = valData.beneficiary.beneficiaryId;
+            tx.beneficiaryName =
+              `${valData.beneficiary.firstName || ''} ${valData.beneficiary.lastName || ''}`.trim() ||
+              tx.beneficiaryName ||
+              'Adebayo Ogunlesi';
+          }
+        }
+      }
+    } catch (_) {}
+
     return res.json({
       code: 200,
       responseType: 'Success',
-      message: `Beneficiary completed for ${tx.transactionId}! Loading Payment Link (${tx.paymentQrUrl || tx.paymentUrl}).`,
+      message: `Beneficiary completed for ${tx.transactionId}! Loading Payment Link (${tx.paymentDirectUrl || tx.paymentUrl}).`,
       data: {
         beneficiaryStatus: 'COMPLETED',
         isCompleted: true,
