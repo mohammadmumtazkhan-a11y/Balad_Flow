@@ -42,15 +42,17 @@
   </div>
 
   <!-- Discrete Top Flow Mode Switcher (Flow 1: New User vs Flow 2: Existing User) -->
-  <div class="flow-helper-bar" id="flowHelperBar" style="flex-wrap:wrap;gap:8px;">
-    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-      <span class="flow-helper-label" style="font-weight:800;color:#0f172a;">Select Flow:</span>
-      <button type="button" id="btnFlowModeNewUser" class="olowo-btn-green sm" onclick="switchHighLevelFlowMode('NEW_USER')" style="font-size:11.5px;padding:5px 10px;">
-        🆕 Flow 1: New User (Register All Info → Corridors &amp; Select Bank → Lock Rate → Submit Txn → MITO Hosted Page)
-      </button>
-      <button type="button" id="btnFlowModeExistingUser" class="olowo-btn-outline-green sm" onclick="switchHighLevelFlowMode('EXISTING_USER')" style="font-size:11.5px;padding:5px 10px;">
-        🔁 Flow 2: Existing User (Log In → Corridors &amp; Select Bank → Lock Rate → Submit Txn → MITO Hosted Page)
-      </button>
+  <div class="flow-helper-bar" id="flowHelperBar">
+    <div class="flow-mode-switcher-row">
+      <span class="flow-helper-label">Select Flow:</span>
+      <div class="flow-mode-btns-wrap">
+        <button type="button" id="btnFlowModeNewUser" class="olowo-btn-green sm flow-mode-btn" onclick="switchHighLevelFlowMode('NEW_USER')">
+          🆕 Flow 1: New User (Register → Select Bank → Lock Rate → MITO Hosted Page)
+        </button>
+        <button type="button" id="btnFlowModeExistingUser" class="olowo-btn-outline-green sm flow-mode-btn" onclick="switchHighLevelFlowMode('EXISTING_USER')">
+          🔁 Flow 2: Existing User (Log In → Select Bank → Lock Rate → MITO Hosted Page)
+        </button>
+      </div>
     </div>
   </div>
 
@@ -200,7 +202,7 @@
          Submits to `POST /api/olowo/auth/register` and `POST /api/v1/mito/Users`
          ====================================================================== -->
     <section id="view-register" class="olowo-view">
-      <div class="olowo-auth-wrap" style="max-width:760px;">
+      <div class="olowo-auth-wrap" style="max-width:760px;margin:0 auto;width:100%;">
         <div class="olowo-logo-block">
           <div class="olowo-welcome-small">Welcome to</div>
           <div class="olowo-wordmark">
@@ -485,7 +487,7 @@
               <span class="api-badge-ok">📡 3. Banks: <code>GET /api/v1/mito/Providers</code></span>
               <span class="api-badge-url" id="corridorsDiscoveredBadge">55 Active Corridors Discovered</span>
             </div>
-            <div style="font-family:'JetBrains Mono',monospace;font-size:11px;background:#0f172a;color:#e2e8f0;padding:9px 12px;border-radius:8px;line-height:1.45;">
+            <div class="api-telemetry-codebox" style="font-family:'JetBrains Mono',monospace;font-size:11px;background:#0f172a;color:#e2e8f0;padding:9px 12px;border-radius:8px;line-height:1.45;">
               <div style="color:#4ade80;font-weight:700;" id="affiliateRateEndpointTitle">GET /api/v1/mito/Exchange/affiliateRates?userId=&lt;dynamic-userId&gt;&amp;FromCountry=GBR&amp;ToCountry=NGA&amp;FromCurrency=GBP&amp;ToCurrency=NGN</div>
               <div style="color:#94a3b8;">Flow: Get Corridors &amp; Rates (using dynamic <code>userId</code> from Step 1 — never hardcoded) → Select Bank (<code>GET /Providers</code> for receive country/currency) → Lock Rate (<code>POST /Exchange/rates</code>) → Submit Transaction (<code>POST /Transactions/InitiateHostedTransaction</code>)</div>
               <div style="color:#fde047;margin-top:3px;" id="affiliateRateResponsePreview">
@@ -1658,37 +1660,36 @@
              - If retry is allowed (`isRetryAllowed: true`): Allows the user to add the beneficiary details again OR abort the transaction and land on the dashboard.
              - If retry is not allowed (`isRetryAllowed: false`): Blocks retry and lets the user abort the transaction and land on the dashboard.
              ====================================================================== -->
-        <div id="beneficiaryFallbackPage" class="hidden" style="background:#ffffff;border:2px solid #fca5a5;border-radius:16px;padding:28px 24px;margin-bottom:16px;box-shadow:0 12px 32px rgba(220,38,38,0.08);">
-          <div style="display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;">
-            <div style="width:52px;height:52px;border-radius:50%;background:#fee2e2;color:#dc2626;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:800;flex-shrink:0;">
+        <div id="beneficiaryFallbackPage" class="beneficiary-fallback-card hidden" style="background:#ffffff;border:2px solid #fca5a5;border-radius:16px;padding:24px 20px;margin-bottom:16px;box-shadow:0 12px 32px rgba(220,38,38,0.08);">
+          <div class="beneficiary-fallback-layout">
+            <div class="beneficiary-fallback-icon">
               !
             </div>
-            <div style="flex:1;min-width:260px;">
-              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
+            <div class="beneficiary-fallback-content">
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
                 <span class="mono-pill" style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;" id="beneficiaryFallbackStatusPill">BENEFICIARY FAILED</span>
                 <span class="mono-pill" id="beneficiaryFallbackRetryPill" style="background:#fef3c7;color:#92400e;border:1px solid #fcd34d;">RETRY ALLOWED</span>
               </div>
-              <h3 style="margin:0 0 8px 0;font-size:20px;color:#7f1d1d;" id="beneficiaryFallbackTitle">
+              <h3 style="margin:0 0 8px 0;font-size:19px;color:#7f1d1d;line-height:1.3;" id="beneficiaryFallbackTitle">
                 Unable to Complete Beneficiary Verification
               </h3>
-              <p style="margin:0 0 14px 0;font-size:14px;color:#334155;line-height:1.55;" id="beneficiaryFallbackMessage">
+              <p style="margin:0 0 14px 0;font-size:13.5px;color:#334155;line-height:1.55;" id="beneficiaryFallbackMessage">
                 We could not verify or save the recipient banking details on the MITO Hosted Page. Since retry is permitted for this transaction, you can either re-open the Beneficiary form to add the recipient details again, or abort this transaction and return to the Dashboard.
               </p>
 
-              <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;margin-bottom:18px;font-size:12.5px;color:#475569;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">
+              <div class="beneficiary-fallback-meta-grid">
                 <div><strong>Transaction ID:</strong> <code id="fallbackTxId">TXN-...</code></div>
                 <div><strong>Beneficiary Journey:</strong> <code id="fallbackBenJourneyCode">JNY-...</code></div>
                 <div><strong>Selected Bank:</strong> <strong id="fallbackBankName">Selected Beneficiary Bank</strong></div>
                 <div><strong>Amount:</strong> <strong id="fallbackAmountSummary">GBP 50.00 → NGN</strong></div>
               </div>
 
-              <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+              <div class="beneficiary-fallback-actions">
                 <button
                   type="button"
                   id="btnRetryBeneficiaryDetails"
                   class="olowo-btn-green"
                   onclick="handleRetryBeneficiaryDetails()"
-                  style="padding:11px 18px;font-size:13.5px;"
                 >
                   🔄 Add Beneficiary Details Again (Retry Beneficiary Link)
                 </button>
@@ -1697,7 +1698,6 @@
                   id="btnAbortTransactionToDashboard"
                   class="olowo-btn-red"
                   onclick="handleAbortTransactionAndReturnToDashboard()"
-                  style="padding:11px 18px;font-size:13.5px;"
                 >
                   🚫 Abort Transaction &amp; Return to Dashboard
                 </button>
@@ -1709,18 +1709,18 @@
         <!-- Live Embedded MITO Hosted Page (Loads requiredAction.beneficiary.link first, then requiredAction.payment.link once beneficiary is completed) -->
         <div id="mitoLiveIframeShell" class="mito-live-iframe-shell" style="background:#ffffff;border:2px solid #cbd5e1;border-radius:16px;overflow:hidden;box-shadow:0 12px 32px rgba(15,23,42,0.08);">
           <!-- Live Browser Frame Header -->
-          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;padding:10px 14px;background:#0f172a;color:#f8fafc;border-bottom:1px solid #334155;">
-            <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1;">
-              <span style="display:inline-flex;gap:5px;">
+          <div class="mito-iframe-header-bar">
+            <div class="mito-iframe-url-wrap">
+              <span style="display:inline-flex;gap:5px;flex-shrink:0;">
                 <span style="width:10px;height:10px;border-radius:50%;background:#ef4444;"></span>
                 <span style="width:10px;height:10px;border-radius:50%;background:#f59e0b;"></span>
                 <span style="width:10px;height:10px;border-radius:50%;background:#22c55e;"></span>
               </span>
-              <span style="font-size:11.5px;background:#1e293b;color:#38bdf8;padding:4px 10px;border-radius:6px;font-family:'JetBrains Mono',monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:520px;" id="mitoLiveIframeUrlBar">
+              <span class="mito-iframe-url-pill" id="mitoLiveIframeUrlBar">
                 🔒 https://mito-checkout-1cca8e18297e.herokuapp.com?journeyCode=JNY-...
               </span>
             </div>
-            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <div class="mito-iframe-mode-btns">
               <button type="button" id="btnMitoFrameModeBeneficiary" class="olowo-btn-green sm" onclick="switchMitoLivePaymentFrameMode('beneficiary')" style="font-size:11.5px;padding:5px 10px;">
                 📱 Beneficiary QR (<code>/?journeyCode=...</code>)
               </button>
@@ -1739,14 +1739,20 @@
             </div>
           </div>
 
-          <!-- Real Live MITO Hosted Iframe -->
-          <div style="position:relative;width:100%;min-height:760px;background:#ffffff;">
+          <!-- Real Live MITO Hosted Iframe with Smooth Auto-Load Transition Overlay -->
+          <div class="mito-iframe-viewport-wrap">
+            <div id="mitoIframeLoadingOverlay" class="mito-iframe-loading-overlay hidden">
+              <div class="mito-orange-spinner"></div>
+              <div id="mitoIframeLoadingText" class="mito-iframe-loading-text">
+                Automatically loading MITO Hosted Page...
+              </div>
+            </div>
             <iframe
               id="mitoLivePaymentIframe"
+              class="mito-live-payment-iframe"
               title="Live MITO Hosted Page"
               src="about:blank"
               allow="payment *; camera *; microphone *; geolocation *; clipboard-write *"
-              style="width:100%;height:760px;border:none;display:block;background:#ffffff;"
             ></iframe>
           </div>
         </div>
@@ -1802,17 +1808,22 @@
           </div>
 
           <!-- Auto-Redirect to Dashboard Countdown Banner (Shown after Successful OR Failed Payment) -->
-          <div id="succAutoRedirectBanner" class="mito-check-banner mt-12 mb-12" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;background:#f0fdf4;border:1.5px solid #86efac;color:#14532d;padding:10px 14px;border-radius:10px;">
-            <div style="font-size:13.5px;font-weight:700;" id="succAutoRedirectText">
-              ⏱️ Payment status captured — Automatically redirecting to Dashboard in <strong id="succAutoRedirectSeconds">5</strong>s...
+          <div id="succAutoRedirectBanner" class="mito-check-banner mt-12 mb-12" style="display:flex;flex-direction:column;gap:8px;background:#f0fdf4;border:1.5px solid #86efac;color:#14532d;padding:12px 14px;border-radius:12px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;width:100%;">
+              <div style="font-size:13.5px;font-weight:700;flex:1;min-width:200px;" id="succAutoRedirectText">
+                ⏱️ Payment status captured — Automatically redirecting to Dashboard in <strong id="succAutoRedirectSeconds">5</strong>s...
+              </div>
+              <div class="succ-redirect-actions">
+                <button type="button" class="olowo-btn-outline-green sm" onclick="cancelStatusPageAutoRedirect()" style="background:#ffffff;padding:6px 12px;font-size:12px;">
+                  ⏸ Stay on Status Page
+                </button>
+                <button type="button" class="olowo-btn-green sm" onclick="redirectFromStatusPageToDashboardNow()" style="padding:6px 14px;font-size:12px;">
+                  Go to Dashboard Now →
+                </button>
+              </div>
             </div>
-            <div style="display:flex;align-items:center;gap:8px;">
-              <button type="button" class="olowo-btn-outline-green sm" onclick="cancelStatusPageAutoRedirect()" style="background:#ffffff;padding:5px 10px;font-size:12px;">
-                ⏸ Stay on Status Page
-              </button>
-              <button type="button" class="olowo-btn-green sm" onclick="redirectFromStatusPageToDashboardNow()" style="padding:5px 12px;font-size:12px;">
-                Go to Dashboard Now →
-              </button>
+            <div class="succ-redirect-progress-track">
+              <div id="succAutoRedirectProgressBar" class="succ-redirect-progress-fill" style="width:100%;"></div>
             </div>
           </div>
 

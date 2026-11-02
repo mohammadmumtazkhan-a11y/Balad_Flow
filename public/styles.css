@@ -36,18 +36,45 @@
   padding: 0;
 }
 
+html {
+  max-width: 100vw;
+  overflow-x: hidden;
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
   font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   background-color: var(--olowo-bg);
   color: var(--olowo-text);
   min-height: 100vh;
   padding-bottom: 92px;
+  max-width: 100vw;
   overflow-x: hidden;
   position: relative;
 }
 
 .hidden {
   display: none !important;
+}
+
+/* Smooth view & card entrance transitions */
+@keyframes olowoSmoothFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.olowo-view:not(.hidden),
+.beneficiary-fallback-card:not(.hidden),
+.olowo-redirect-result-card:not(.hidden),
+#succRetrievedBeneficiariesCard:not(.hidden) {
+  animation: olowoSmoothFadeIn 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 /* ============================================================================
@@ -80,15 +107,48 @@ body {
   position: sticky;
   top: 0;
   z-index: 90;
-  background: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.94);
   backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--olowo-border);
-  padding: 8px 20px;
+  padding: 8px 16px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  justify-content: center;
+  gap: 10px;
   flex-wrap: wrap;
+}
+
+.flow-mode-switcher-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  width: 100%;
+  max-width: 980px;
+}
+
+.flow-mode-btns-wrap {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  flex-wrap: wrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.flow-mode-btn {
+  flex: 1 1 280px;
+  font-size: 12px !important;
+  padding: 7px 12px !important;
+  text-align: center;
+  white-space: normal;
+  line-height: 1.35;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px !important;
+  transition: all 0.2s ease;
 }
 
 .flow-helper-steps {
@@ -829,6 +889,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .sunset-label-pill {
@@ -850,6 +912,7 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
+  max-width: 100%;
 }
 .curr-flag {
   font-size: 16px;
@@ -875,27 +938,33 @@ body {
 
 .sunset-amount-row {
   display: flex;
-  align-items: baseline;
-  gap: 4px;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
 }
 .sunset-curr-symbol {
-  font-size: 34px;
+  font-size: 32px;
   font-weight: 800;
   text-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  flex-shrink: 0;
 }
 .sunset-amount-input {
   background: rgba(255, 255, 255, 0.08);
   border: 1.5px solid rgba(255, 255, 255, 0.28);
   border-radius: 12px;
-  padding: 4px 12px;
+  padding: 6px 12px;
   color: #ffffff;
-  font-size: 32px;
+  font-size: 30px;
   font-weight: 800;
   font-family: inherit;
-  width: 280px;
-  max-width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+  max-width: 280px;
   outline: none;
   text-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  box-sizing: border-box;
 }
 .sunset-amount-input:focus {
   background: rgba(15, 23, 42, 0.55);
@@ -912,15 +981,19 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 10px;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 .rate-arrows {
   color: #4ade80;
   font-weight: 800;
   font-size: 15px;
+  flex-shrink: 0;
 }
 .rate-badge-text {
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 .rate-small-label {
   font-size: 10.5px;
@@ -930,6 +1003,8 @@ body {
   font-size: 13px;
   color: #4ade80;
   font-weight: 700;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .sunset-corridor-note {
@@ -2583,8 +2658,561 @@ body {
 @media (max-width: 1440px) {
   .rate-lock-side-widget {
     position: static;
-    width: 100%;
+    width: calc(100% - 32px);
     max-width: 780px;
+    margin: 12px auto 0 auto;
+  }
+}
+
+/* ============================================================================
+   TELEMETRY CODEBOX, BENEFICIARY FALLBACK CARD, IFRAME SHELL & STATUS PROGRESS
+   ============================================================================ */
+.api-telemetry-codebox,
+.api-telemetry-codebox * {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  box-sizing: border-box;
+}
+
+.beneficiary-fallback-layout {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.beneficiary-fallback-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: #fee2e2;
+  color: #dc2626;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26px;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+.beneficiary-fallback-content {
+  flex: 1 1 260px;
+  min-width: 0;
+  width: 100%;
+}
+.beneficiary-fallback-meta-grid {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 18px;
+  font-size: 12.5px;
+  color: #475569;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.beneficiary-fallback-actions {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.beneficiary-fallback-actions button {
+  flex: 1 1 240px;
+  padding: 12px 18px;
+  font-size: 13.5px;
+  text-align: center;
+  white-space: normal;
+  line-height: 1.35;
+}
+
+.mito-iframe-header-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 14px;
+  background: #0f172a;
+  color: #f8fafc;
+  border-bottom: 1px solid #334155;
+}
+.mito-iframe-url-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 240px;
+}
+.mito-iframe-url-pill {
+  font-size: 11.5px;
+  background: #1e293b;
+  color: #38bdf8;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-family: 'JetBrains Mono', monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+  max-width: 100%;
+}
+.mito-iframe-mode-btns {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.mito-iframe-viewport-wrap {
+  position: relative;
+  width: 100%;
+  min-height: 760px;
+  background: #ffffff;
+}
+.mito-live-payment-iframe {
+  width: 100%;
+  height: 760px;
+  border: none;
+  display: block;
+  background: #ffffff;
+}
+.mito-iframe-loading-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(4px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  z-index: 20;
+  padding: 24px;
+  text-align: center;
+  transition: opacity 0.25s ease;
+}
+.mito-iframe-loading-text {
+  font-size: 14px;
+  font-weight: 700;
+  color: #1e293b;
+  max-width: 420px;
+  line-height: 1.45;
+}
+
+.succ-redirect-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.succ-redirect-progress-track {
+  width: 100%;
+  height: 5px;
+  background: rgba(15, 23, 42, 0.1);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.succ-redirect-progress-fill {
+  height: 100%;
+  background: #16a34a;
+  border-radius: 999px;
+  transition: width 0.95s linear, background 0.25s ease;
+}
+
+/* ============================================================================
+   COMPREHENSIVE MOBILE PHONE & TABLET UI/UX OPTIMIZATION
+   No overflowing, no misalignment, proper spacing, and full symmetry
+   ============================================================================ */
+@media (max-width: 768px) {
+  .olowo-bg-art {
+    display: none;
+  }
+
+  .flow-helper-bar {
+    padding: 8px 12px;
+  }
+  .flow-mode-switcher-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+  .flow-helper-label {
+    text-align: center;
+    margin-right: 0;
+  }
+  .flow-mode-btns-wrap {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    width: 100%;
+  }
+  .flow-mode-btn {
+    flex: unset;
+    width: 100%;
+    font-size: 11px !important;
+    padding: 7px 8px !important;
+  }
+
+  .rate-lock-side-widget {
+    width: calc(100% - 24px);
     margin: 10px auto 0 auto;
+    padding: 12px 14px;
+  }
+
+  .olowo-app-shell {
+    padding: 14px 12px 36px;
+  }
+
+  .olowo-auth-card,
+  .olowo-auth-card.wide,
+  .olowo-fullscreen-card {
+    padding: 18px 15px;
+    border-radius: 20px;
+  }
+
+  .olowo-wordmark {
+    font-size: 38px;
+  }
+
+  .olowo-preset-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .preset-chip {
+    width: 100%;
+    text-align: center;
+    white-space: normal;
+    line-height: 1.35;
+  }
+
+  .olowo-reg-actions-row {
+    flex-direction: column-reverse;
+    align-items: stretch;
+    gap: 12px;
+  }
+  .olowo-reg-actions-row .px-create {
+    width: 100%;
+    text-align: center;
+  }
+  .olowo-reg-actions-row .olowo-already-link {
+    text-align: center;
+  }
+
+  /* Dashboard Header Symmetry on Mobile */
+  .olowo-top-header {
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+  }
+  .olowo-user-chip {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .olowo-user-text {
+    min-width: 0;
+  }
+  .sender-id-pill {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    word-break: break-all;
+    white-space: normal;
+  }
+  .olowo-date-weather {
+    text-align: right;
+  }
+
+  .olowo-send-title-row {
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .olowo-rate-quickbar {
+    justify-content: center;
+    padding: 10px;
+  }
+  .quickbar-label {
+    width: 100%;
+    text-align: center;
+    margin-bottom: 2px;
+  }
+  .quick-amt-btn {
+    flex: 1 1 80px;
+    text-align: center;
+  }
+  .collection-mode-pills {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin-top: 2px;
+  }
+  .mode-pill {
+    text-align: center;
+    width: 100%;
+  }
+
+  /* Sunset Cards on Mobile */
+  .sunset-card {
+    padding: 16px 15px;
+    min-height: 170px;
+    border-radius: 18px;
+  }
+  .sunset-curr-symbol {
+    font-size: 26px;
+  }
+  .sunset-amount-input {
+    font-size: 24px;
+    max-width: 100%;
+    padding: 6px 10px;
+  }
+  .sunset-rate-badge {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .sunset-corridor-note {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  /* Select Bank & Action Buttons on Mobile */
+  #btnLockRateOnly,
+  #btnContinueToCheckout {
+    width: 100% !important;
+    flex: 1 1 100% !important;
+    text-align: center;
+    white-space: normal;
+    line-height: 1.35;
+    justify-content: center;
+  }
+
+  /* Transactions & Retrieved Beneficiaries Rows on Mobile */
+  .olowo-transactions-box {
+    padding: 14px;
+  }
+  .tx-history-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .tx-history-row > div {
+    width: 100%;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  .tx-history-row > div:last-child {
+    text-align: left !important;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding-top: 8px;
+    border-top: 1px dashed #e7e2da;
+  }
+
+  /* Full-Screen Topbar & Stepper on Mobile */
+  .fullscreen-topbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+  .fullscreen-topbar > * {
+    width: 100%;
+    text-align: center;
+    justify-content: center;
+  }
+  .olowo-btn-back-sm {
+    width: 100%;
+    text-align: center;
+  }
+
+  .olowo-stepper {
+    gap: 4px;
+  }
+  .stepper-item {
+    min-width: 60px;
+  }
+  .step-label {
+    font-size: 11px;
+  }
+
+  /* MITO Hosted Page & Iframe Controls on Mobile */
+  #btnOpenLiveMitoPaymentLink {
+    width: 100%;
+    text-align: center;
+    white-space: normal !important;
+  }
+  #beneficiaryStageControlBar > div {
+    width: 100%;
+    margin-left: 0 !important;
+    display: grid !important;
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+  .mito-redirect-sim-bar {
+    padding: 10px 12px;
+  }
+  .mito-redirect-sim-bar button {
+    flex: 1 1 140px;
+    text-align: center;
+    white-space: normal;
+    line-height: 1.3;
+  }
+
+  .mito-iframe-mode-btns {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .mito-iframe-mode-btns button {
+    width: 100%;
+    text-align: center;
+    white-space: normal;
+    line-height: 1.25;
+  }
+  .mito-iframe-viewport-wrap,
+  .mito-live-payment-iframe {
+    min-height: 620px;
+    height: 620px;
+  }
+
+  /* Beneficiary Fallback Page on Mobile */
+  .beneficiary-fallback-layout {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+  .beneficiary-fallback-content > div:first-child {
+    justify-content: center;
+  }
+  .beneficiary-fallback-meta-grid {
+    text-align: left;
+    grid-template-columns: 1fr;
+  }
+  .beneficiary-fallback-actions {
+    flex-direction: column;
+  }
+  .beneficiary-fallback-actions button {
+    flex: unset;
+    width: 100%;
+  }
+
+  /* Payment Status Page (`view-success`) on Mobile */
+  .succ-redirect-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .succ-redirect-actions button {
+    width: 100%;
+    text-align: center;
+  }
+  .success-main-title {
+    font-size: 21px;
+  }
+  .success-amount-banner {
+    flex-direction: column;
+    text-align: center;
+    padding: 16px 14px;
+    gap: 10px;
+  }
+  .succ-amt-val {
+    font-size: 20px;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  .succ-amt-arrow {
+    transform: rotate(90deg);
+    line-height: 1;
+  }
+
+  .olowo-summary-card {
+    padding: 14px;
+  }
+  .sum-row {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .sum-row span {
+    flex: 1 1 40%;
+    min-width: 110px;
+  }
+  .sum-row strong {
+    flex: 1 1 52%;
+    max-width: 100%;
+  }
+
+  .olowo-bottom-btn-row {
+    flex-direction: column-reverse;
+    align-items: stretch;
+    gap: 10px;
+  }
+  .olowo-bottom-btn-row > button {
+    width: 100%;
+    text-align: center;
+    white-space: normal;
+    line-height: 1.35;
+  }
+
+  /* Bottom Nav on Mobile */
+  .olowo-bottom-nav {
+    gap: 72px;
+    height: 64px;
+  }
+
+  /* Inspector Modal on Mobile */
+  .olowo-modal-backdrop {
+    padding: 10px;
+  }
+  .inspector-modal-header {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 12px;
+  }
+  .inspector-tabs {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+  .insp-tab {
+    text-align: center;
+    font-size: 11.5px;
+    padding: 7px 8px;
+  }
+  .insp-close-btn {
+    width: 100%;
+  }
+}
+
+@media (max-width: 420px) {
+  .flow-mode-btns-wrap {
+    grid-template-columns: 1fr;
+  }
+  .olowo-phone-grid {
+    grid-template-columns: 92px minmax(0, 1fr);
+    gap: 8px;
+  }
+  .sunset-curr-symbol {
+    font-size: 22px;
+  }
+  .sunset-amount-input {
+    font-size: 21px;
+  }
+  .mito-iframe-mode-btns {
+    grid-template-columns: 1fr;
+  }
+  .succ-redirect-actions {
+    grid-template-columns: 1fr;
+  }
+  .rlw-actions {
+    flex-direction: column;
   }
 }

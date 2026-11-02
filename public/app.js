@@ -315,6 +315,12 @@ function jumpToView(viewName) {
   STATE.currentView = viewName;
   updateTopFlowBarForUserState();
 
+  try {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  } catch (_) {
+    window.scrollTo(0, 0);
+  }
+
   // Highlight active pill in top helper bar
   document.querySelectorAll('.flow-pill').forEach(btn => {
     const target = btn.getAttribute('data-goto');
@@ -2469,9 +2475,10 @@ async function handleRetryBeneficiaryDetails() {
   startBeneficiaryStatusAutoPolling();
 }
 
-// Abort the transaction and land on the Dashboard
+// Abort the transaction, show Aborted Status on Dashboard & Transactions list, and smoothly return to Dashboard
 async function handleAbortTransactionAndReturnToDashboard() {
   stopBeneficiaryStatusAutoPolling();
+  stopPaymentStatusAutoPolling();
 
   let abortedTx = null;
   if (STATE.transactionId) {
@@ -2486,22 +2493,49 @@ async function handleAbortTransactionAndReturnToDashboard() {
 
   const selProv = STATE.selectedDroplists.dashProvider || STATE.selectedDroplists.provider;
   const record = {
-    transactionId: STATE.transactionId || `TXN-${Date.now()}`,
+    transactionId: (abortedTx && abortedTx.transactionId) || STATE.transactionId || `TXN-${Date.now()}`,
+    reference: (abortedTx && abortedTx.reference) || '',
     beneficiaryName: (abortedTx && abortedTx.beneficiaryName) || 'Beneficiary Aborted',
+    beneficiaryId: (abortedTx && abortedTx.beneficiaryId) || 'ABORTED',
     providerName: (abortedTx && abortedTx.providerName) || (selProv ? selProv.name : 'Selected Beneficiary Bank'),
+    collectionMode: STATE.collectionMode || 'BANKACCOUNT',
+    rateId: STATE.rateId || '—',
+    exchangeRate: STATE.customerRate || 1831.01,
+    senderName: `${STATE.sender.firstName || 'David'} ${STATE.sender.lastName || 'Beckham'}`.trim(),
+    senderId: STATE.sender.mitoUserId || STATE.sender.userId || STATE.senderId || '—',
+    senderKycStatus: STATE.sender.kycStatus || 'PASSED',
+    senderKycTier: STATE.sender.kycTier || 'MINI_KYC',
     sendCurrency: STATE.sendCurrency,
     sendAmount: STATE.sendAmount,
     receiveCurrency: STATE.receiveCurrency,
     receiveAmount: STATE.receiveAmount,
-    status: 'FAILED',
+    paymentStatus: 'FAILED',
     paymentCase: 'CANCELLED',
     rawMitoOrderStatus: 'ABORTED',
+    completedAt: new Date().toISOString(),
     createdAt: new Date().toLocaleTimeString()
   };
 
-  STATE.transfers = [record, ...STATE.transfers.filter(t => t.transactionId !== record.transactionId)];
-  renderDashboardTransfers();
+  const existingIdx = STATE.transactions.findIndex(t => t.transactionId === record.transactionId);
+  if (existingIdx >= 0) {
+    STATE.transactions[existingIdx] = record;
+  } else {
+    STATE.transactions.unshift(record);
+  }
+  renderTransactionsList();
   hideBeneficiaryFallbackPage();
+
+  const alertBanner = document.getElementById('dashAlertBanner');
+  const alertText = document.getElementById('dashAlertText');
+  if (alertBanner && alertText) {
+    alertBanner.style.background = '#fee2e2';
+    alertBanner.style.borderColor = '#fca5a5';
+    alertBanner.style.color = '#991b1b';
+    alertText.innerHTML =
+      `🚫 <strong>Transaction Aborted (<code>${record.transactionId}</code>):</strong> ` +
+      `Beneficiary step was aborted and no funds were debited. You are back on the <strong>Dashboard</strong> and can start a new transfer anytime.`;
+  }
+
   jumpToView('dashboard');
 }
 
@@ -2527,7 +2561,7 @@ function startBeneficiaryStatusAutoPolling() {
     } catch (_) {}
   };
 
-  STATE.beneficiaryPollTimerId = setInterval(checkStatusOnce, 1500);
+  STATE.beneficiaryPollTimerId = setInterval(checkStatusOnce, 1200);
 }
 
 function stopBeneficiaryStatusAutoPolling() {
@@ -2571,7 +2605,7 @@ function startPaymentStatusAutoPolling() {
     } catch (_) {}
   };
 
-  STATE.paymentPollTimerId = setInterval(checkPaymentOnce, 1500);
+  STATE.paymentPollTimerId = setInterval(checkPaymentOnce, 1200);
 }
 
 function stopPaymentStatusAutoPolling() {
@@ -2623,6 +2657,7 @@ window.addEventListener('message', e => {
     const reason =
       (msg.error && (msg.error.status || msg.error.reason)) ||
       (msg.payload && (msg.payload.status || msg.payload.reason)) ||
+      (msg.metadata && (msg.metadata.status || msg.metadata.reason)) ||
       'FAILED';
     if (STATE.hostedStage === 'beneficiary') {
       handleBeneficiaryFailedShowFallback(
@@ -2634,9 +2669,9 @@ window.addEventListener('message', e => {
       stopPaymentStatusAutoPolling();
       STATE.hostedStage = 'payment_failed';
       const upperReason = String(reason || 'FAILED').toUpperCase();
-      const mappedFailStatus = upperReason.includes('CANCEL')
+      const mappedFailStatus = upperReason.includes('CANCEL') || upperReason.includes('CLOSE')
         ? 'CANCELLED'
-        : upperReason.includes('EXPIR')
+        : upperReason.includes('EXPIR') || upperReason.includes('RESTART')
         ? 'EXPIRED'
         : 'FAILED';
       completePaymentAndRedirect(mappedFailStatus, { autoRedirectToDashboard: true });
@@ -2644,22 +2679,44 @@ window.addEventListener('message', e => {
   }
 });
 
+let iframeOverlayHideTimeout = null;
+
 function loadMitoLivePaymentIframe(targetUrl, mode = 'beneficiary') {
   const iframe = document.getElementById('mitoLivePaymentIframe');
   const urlBar = document.getElementById('mitoLiveIframeUrlBar');
+  const overlay = document.getElementById('mitoIframeLoadingOverlay');
+  const overlayText = document.getElementById('mitoIframeLoadingText');
   const btnBeneficiary = document.getElementById('btnMitoFrameModeBeneficiary');
   const btnBeneficiaryForm = document.getElementById('btnMitoFrameModeBeneficiaryForm');
   const btnPaymentQr = document.getElementById('btnMitoFrameModePaymentQr');
   const btnCheckout = document.getElementById('btnMitoFrameModeCheckout');
 
-  // Append `mitoEmbed=1` when embedding MITO's public Heroku page inside the iframe so MITO uses `postMessage`
-  // instead of attempting a cross-origin private-network redirect to `http://localhost:3000` (which Chrome blocks)!
+  if (overlay && overlayText) {
+    if (iframeOverlayHideTimeout) clearTimeout(iframeOverlayHideTimeout);
+    overlayText.innerHTML =
+      mode === 'paymentQr' || mode === 'checkout'
+        ? `✅ <strong>Beneficiary Completed!</strong><br/>Automatically loading MITO Payment Hosted Link (<code>requiredAction.payment.link</code>)...`
+        : `🔄 Automatically loading MITO Beneficiary Hosted Link (<code>requiredAction.beneficiary.link</code>)...`;
+    overlay.classList.remove('hidden');
+    iframeOverlayHideTimeout = setTimeout(() => {
+      overlay.classList.add('hidden');
+    }, 900);
+  }
+
+  // Append `mitoEmbed=1` and stage cache-buster when embedding MITO's public Heroku page inside the iframe
+  // so MITO uses `postMessage` and the browser always triggers a fresh automatic load when transitioning Beneficiary -> Payment!
   let iframeSrcUrl = targetUrl;
-  if (iframeSrcUrl && iframeSrcUrl.includes('mito-checkout') && !iframeSrcUrl.includes('mitoEmbed=')) {
-    iframeSrcUrl += (iframeSrcUrl.includes('?') ? '&' : '?') + 'mitoEmbed=1';
+  if (iframeSrcUrl && iframeSrcUrl.includes('mito-checkout')) {
+    if (!iframeSrcUrl.includes('mitoEmbed=')) {
+      iframeSrcUrl += (iframeSrcUrl.includes('?') ? '&' : '?') + 'mitoEmbed=1';
+    }
+    iframeSrcUrl += `&stage=${encodeURIComponent(mode)}&_t=${Date.now()}`;
   }
 
   if (iframe && iframeSrcUrl) {
+    iframe.onload = () => {
+      if (overlay) overlay.classList.add('hidden');
+    };
     iframe.src = iframeSrcUrl;
   }
   if (urlBar && targetUrl) {
@@ -3368,32 +3425,44 @@ function redirectFromStatusPageToDashboardNow() {
 
 function startStatusPageToDashboardCountdown(seconds = 4, normalizedStatus = 'SUCCESS', rawMitoOrderStatus = 'READYTOPROCESS') {
   clearStatusPageAutoRedirectTimer();
-  let rem = seconds;
+  const totalSec = Math.max(1, seconds);
+  let rem = totalSec;
   const banner = document.getElementById('succAutoRedirectBanner');
   const txtEl = document.getElementById('succAutoRedirectText');
+  const progBar = document.getElementById('succAutoRedirectProgressBar');
+  const isSucc = normalizedStatus === 'SUCCESS';
+  const isPend = normalizedStatus === 'PENDING';
   if (banner) {
     banner.classList.remove('hidden');
-    const isSucc = normalizedStatus === 'SUCCESS';
-    const isPend = normalizedStatus === 'PENDING';
     banner.style.background = isSucc ? '#f0fdf4' : isPend ? '#fffbeb' : '#fef2f2';
     banner.style.borderColor = isSucc ? '#86efac' : isPend ? '#fcd34d' : '#fca5a5';
     banner.style.color = isSucc ? '#14532d' : isPend ? '#92400e' : '#991b1b';
   }
+  if (progBar) {
+    progBar.style.background = isSucc ? '#16a34a' : isPend ? '#d97706' : '#dc2626';
+    progBar.style.width = '100%';
+  }
   const updateBannerText = () => {
-    if (!txtEl) return;
-    const statusLabel =
-      normalizedStatus === 'SUCCESS'
-        ? `✅ Payment Successful (${rawMitoOrderStatus})`
-        : normalizedStatus === 'PENDING'
-        ? `⏳ Payment In Process (${rawMitoOrderStatus})`
-        : `❌ Payment Failed / Not Completed (${rawMitoOrderStatus})`;
-    txtEl.innerHTML = `${statusLabel} — Showing Payment Status page and redirecting to <strong>Dashboard</strong> in <strong>${rem}s</strong>...`;
+    if (txtEl) {
+      const statusLabel =
+        normalizedStatus === 'SUCCESS'
+          ? `✅ Payment Successful (${rawMitoOrderStatus})`
+          : normalizedStatus === 'PENDING'
+          ? `⏳ Payment In Process (${rawMitoOrderStatus})`
+          : `❌ Payment Failed / Not Completed (${rawMitoOrderStatus})`;
+      txtEl.innerHTML = `${statusLabel} — Showing Payment Status page and redirecting to <strong>Dashboard</strong> in <strong>${rem}s</strong>...`;
+    }
+    if (progBar) {
+      const pct = Math.max(0, Math.min(100, ((rem - 0.5) / totalSec) * 100));
+      progBar.style.width = `${pct}%`;
+    }
   };
   updateBannerText();
 
   statusPageRedirectInterval = setInterval(() => {
     rem -= 1;
     if (rem <= 0) {
+      if (progBar) progBar.style.width = '0%';
       clearStatusPageAutoRedirectTimer();
       if (STATE.currentView === 'success') {
         jumpToView('dashboard');
@@ -3464,28 +3533,6 @@ function switchInspectorTab(tab) {
   document.getElementById('inspPanelLogs').classList.toggle('hidden', tab !== 'logs');
   document.getElementById('inspPanelWireframes').classList.toggle('hidden', tab !== 'wireframes');
 }
-
-// Listen for postMessage events from the live embedded MITO Hosted Payment Link iframe (`mito-checkout-1cca8e18297e.herokuapp.com`)
-window.addEventListener('message', event => {
-  try {
-    const payload = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
-    if (!payload || typeof payload !== 'object') return;
-    if (payload.type === 'MITO_LINK_SUCCESS') {
-      const rawSt = String(payload.payload?.status || payload.metadata?.status || 'READYTOPROCESS').toUpperCase();
-      const orderNo = payload.payload?.transactionReference || payload.metadata?.transactionReference || '';
-      completePaymentAndRedirect(rawSt, { orderNo });
-    } else if (payload.type === 'MITO_LINK_EXIT') {
-      const reason = String(payload.error?.reason || payload.metadata?.reason || '').toUpperCase();
-      const rawSt = String(
-        payload.error?.status ||
-          payload.metadata?.status ||
-          (reason === 'CANCELLED' || reason === 'USER_CLOSED' ? 'CANCELLED' : reason === 'EXPIRED' || reason === 'RESTART' ? 'EXPIRED' : 'FAILED')
-      ).toUpperCase();
-      const orderNo = payload.metadata?.transactionReference || '';
-      completePaymentAndRedirect(rawSt, { orderNo });
-    }
-  } catch (_) {}
-});
 
 // Initialize on DOMContentLoaded — If arriving via /remittances/callback redirect URL (?mito_callback=1), open Step 7 Result Page; otherwise start from Step 1
 window.addEventListener('DOMContentLoaded', async () => {

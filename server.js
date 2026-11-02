@@ -2686,16 +2686,27 @@ app.get('/api/v1/mito/Transactions/:id/payment-status', async (req, res) => {
   }
   const payJc = tx.paymentJourneyCode || tx.journeyCode;
   let liveJourney = null;
-  let isCompleted = false;
-  let isFailed = false;
+  let isCompleted = tx.paymentStatus === 'SUCCESS' || tx.paymentStatus === 'PENDING';
+  let isFailed = tx.paymentStatus === 'FAILED' && tx.beneficiaryStatus !== 'FAILED';
   let resolvedOrderStatus = tx.rawMitoOrderStatus || null;
   let resolvedOrderNo = tx.orderNo || tx.reference || '';
   let resolvedPaymentMethod = tx.paymentMethod || 'MITO Hosted Payment';
 
   try {
+    const tokRes = await fetch(`${MITO_STAGING_CONFIG.baseUrl}/auth/Token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ApiKey: 'd2783dc0-0ebc-4980-98ec-6203215f81ec' },
+      body: JSON.stringify({ journeyCode: payJc })
+    }).then(r => r.json());
+    const token = tokRes && tokRes.data && tokRes.data.token ? tokRes.data.token : null;
+    const headers = {
+      ApiKey: 'd2783dc0-0ebc-4980-98ec-6203215f81ec',
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    };
+
     const jRes = await fetch(
       `${MITO_STAGING_CONFIG.baseUrl}/Journey/status?journeyCode=${encodeURIComponent(payJc)}`,
-      { headers: { ApiKey: 'd2783dc0-0ebc-4980-98ec-6203215f81ec' } }
+      { headers }
     ).then(r => r.json());
     liveJourney = jRes && jRes.data ? jRes.data : null;
 
@@ -2743,6 +2754,8 @@ app.get('/api/v1/mito/Transactions/:id/payment-status', async (req, res) => {
       if (FAIL_STATUSES.has(oStatus) || FAIL_STATUSES.has(jStatus) || FAIL_STATUSES.has(mStatus)) {
         isFailed = true;
         resolvedOrderStatus = oStatus || jStatus || mStatus || 'FAILED';
+        tx.paymentStatus = 'FAILED';
+        tx.rawMitoOrderStatus = resolvedOrderStatus;
       } else if (
         jStatus === 'COMPLETED' ||
         jStatus === 'APPROVED' ||
@@ -2752,6 +2765,9 @@ app.get('/api/v1/mito/Transactions/:id/payment-status', async (req, res) => {
       ) {
         isCompleted = true;
         resolvedOrderStatus = oStatus && oStatus !== 'BENEFICIARYCOMPLETED' ? oStatus : 'READYTOPROCESS';
+        tx.paymentStatus =
+          resolvedOrderStatus === 'AWAITINGPAYMENT' || resolvedOrderStatus === 'INREVIEW' ? 'PENDING' : 'SUCCESS';
+        tx.rawMitoOrderStatus = resolvedOrderStatus;
       }
     }
   } catch (_) {}
