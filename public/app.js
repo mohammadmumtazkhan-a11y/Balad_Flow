@@ -337,7 +337,7 @@ function jumpToView(viewName) {
   if (viewName === 'dashboard') {
     refreshDashboardHeader();
     discoverActiveCorridors().then(() => fetchQuoteLive());
-    loadDashboardProvidersAndTypes();
+    loadDashboardProvidersAndTypes().then(() => retrieveAddedBeneficiariesAfterPayment());
     renderDashboardRetrievedBeneficiaries();
     renderTransactionsList();
   } else if (viewName === 'beneficiary') {
@@ -1124,16 +1124,25 @@ async function handleContinueToCheckout() {
     alertBanner.style.color = '';
   }
 
-  // Per User Rule:
-  // "user registers ---> Get corridors for showing rates to the user ---> let the user select the bank (get Providers based on the receive country/currency) ---> Lock rates ---> submit Transaction"
-  // "select bank only, then lock rate and submit Transaction ---> Mito will send a hosted page in response that will continue flow for creating beneficiary and any required info if needed."
-  STATE.beneficiaryId = null;
-  STATE.activeBeneficiary = null;
+  // If the user selected an existing beneficiary on the Dashboard, pass that beneficiaryId so they skip adding beneficiary details again!
+  // Otherwise, omit beneficiaryId so MITO's Hosted Page collects new beneficiary details.
+  if (STATE.selectedDashboardBeneficiaryId) {
+    STATE.beneficiaryId = STATE.selectedDashboardBeneficiaryId;
+    STATE.activeBeneficiary =
+      STATE.selectedDashboardBeneficiary ||
+      (STATE.savedBeneficiaries || []).find(
+        b => String(b.beneficiaryId || '').toLowerCase() === String(STATE.selectedDashboardBeneficiaryId).toLowerCase()
+      ) ||
+      null;
+  } else {
+    STATE.beneficiaryId = null;
+    STATE.activeBeneficiary = null;
+  }
 
   const lockedOk = await lockExchangeRateAfterRateScreen();
   if (!lockedOk) return;
 
-  await handleConfirmSummaryAndInitiatePayment({ bankOnlyFlow: true });
+  await handleConfirmSummaryAndInitiatePayment({ bankOnlyFlow: !STATE.selectedDashboardBeneficiaryId });
 }
 
 function openSenderFormForAddressChange() {
@@ -2178,10 +2187,13 @@ async function handleConfirmSummaryAndInitiatePayment(options = {}) {
       'FOROWNEXPENDITURES';
 
     // Submit Transaction using the locked rateId + selected bank (providerId) via POST /api/v1/mito/Transactions/InitiateHostedTransaction
-    // OMIT `beneficiary` / `beneficiaryId` key completely -> MITO returns the `requiredAction.beneficiary` object with a new link (`requiredAction.beneficiary.link`)!
+    // - If user selected an existing beneficiary (`STATE.beneficiaryId`), pass `beneficiaryId` so MITO skips adding beneficiary details and goes straight to Payment!
+    // - Otherwise omit `beneficiaryId` so MITO returns `requiredAction.beneficiary.link`!
+    const selectedBeneficiaryIdToUse = STATE.beneficiaryId || STATE.selectedDashboardBeneficiaryId || null;
     const txRes = await callApi('POST', '/api/v1/mito/Transactions/InitiateHostedTransaction', {
       userId: STATE.sender.userId || STATE.sender.mitoUserId || STATE.senderId,
       senderId: STATE.senderId,
+      ...(selectedBeneficiaryIdToUse ? { beneficiaryId: selectedBeneficiaryIdToUse } : {}),
       providerId,
       providerName,
       rateId: STATE.rateId,
@@ -2198,15 +2210,16 @@ async function handleConfirmSummaryAndInitiatePayment(options = {}) {
     STATE.transactionId = txData.transactionId;
     const paymentOnly = txData.requiredActionPayment || (txData.requiredAction && txData.requiredAction.payment) || {};
     const benAction = txData.requiredActionBeneficiary || (txData.requiredAction && txData.requiredAction.beneficiary) || {};
+    const skipBenStep = Boolean(txData.skipBeneficiaryHostedStep || (selectedBeneficiaryIdToUse && !txData.requiredActionBeneficiary));
     STATE.requiredActionPayment = paymentOnly;
     STATE.requiredActionBeneficiary = benAction;
 
     const benJourneyCode = benAction.journeyCode || txData.beneficiaryJourneyCode || txData.journeyCode || '';
     const payJourneyCode = paymentOnly.journeyCode || txData.paymentJourneyCode || benJourneyCode;
-    STATE.journeyCode = benJourneyCode;
+    STATE.journeyCode = skipBenStep ? payJourneyCode : benJourneyCode;
     STATE.beneficiaryJourneyCode = benJourneyCode;
     STATE.paymentJourneyCode = payJourneyCode;
-    STATE.hostedStage = 'beneficiary';
+    STATE.hostedStage = skipBenStep ? 'payment' : 'beneficiary';
 
     // Extract the new link from the `requiredAction.beneficiary` object and load `/retail-transaction/flow?journeyCode=...` directly so it never lands on `/mobile` ("Let's get you verified")!
     STATE.beneficiaryRawLink =
@@ -2251,28 +2264,44 @@ async function handleConfirmSummaryAndInitiatePayment(options = {}) {
     const refEl = document.getElementById('stripMitoRef');
     if (refEl) refEl.textContent = txData.reference || '';
     const jnyEl = document.getElementById('stripJourneyCode');
-    if (jnyEl) jnyEl.textContent = benJourneyCode;
+    if (jnyEl) jnyEl.textContent = skipBenStep ? payJourneyCode : benJourneyCode;
     const benHostEl = document.getElementById('stripBeneficiaryHostedUrl');
-    if (benHostEl) benHostEl.textContent = STATE.beneficiaryRawLink;
+    if (benHostEl) benHostEl.textContent = skipBenStep ? `Skipped (Using existing beneficiary ${txData.beneficiaryName || selectedBeneficiaryIdToUse})` : STATE.beneficiaryRawLink;
     const benUrlLinkEl = document.getElementById('stripBeneficiaryUrlLink');
     if (benUrlLinkEl) benUrlLinkEl.href = STATE.beneficiaryDirectUrl;
     document.getElementById('stripPaymentUrl').textContent = STATE.paymentRawLink;
     const payLinkEl = document.getElementById('stripPaymentUrlLink');
     if (payLinkEl) payLinkEl.href = STATE.paymentDirectUrl;
     const openBtnEl = document.getElementById('btnOpenLiveMitoPaymentLink');
-    if (openBtnEl) openBtnEl.href = STATE.beneficiaryDirectUrl;
+    const openBtnLabel = document.getElementById('btnOpenLiveMitoLabel');
+    if (openBtnEl) openBtnEl.href = skipBenStep ? STATE.paymentDirectUrl : STATE.beneficiaryDirectUrl;
+    if (openBtnLabel) {
+      openBtnLabel.innerHTML = skipBenStep
+        ? '🔗 Open Payment Link (<code>requiredAction.payment.link</code>) ↗'
+        : '🔗 Open Beneficiary Link (<code>requiredAction.beneficiary.link</code>) ↗';
+    }
     const redirEl = document.getElementById('stripRedirectUrl');
     if (redirEl) redirEl.textContent = STATE.redirectUrl;
 
     // Ensure Fallback Page is hidden and Iframe Shell is visible on new transaction start
     hideBeneficiaryFallbackPage();
-    updateBeneficiaryStageBanner('beneficiary_pending');
 
-    // Automatically load the Direct Beneficiary Flow (`/retail-transaction/flow?journeyCode=...`) inside #mitoLivePaymentIframe so it opens Recipient/Beneficiary directly on Mobile & Desktop!
-    loadMitoLivePaymentIframe(STATE.beneficiaryDirectUrl, 'beneficiaryForm');
-
-    // Start live auto-polling of `GET /api/v1/mito/Transactions/:id/beneficiary-status` so once Beneficiary is completed, we automatically load the Payment Link!
-    startBeneficiaryStatusAutoPolling();
+    if (skipBenStep) {
+      // Existing beneficiary selected -> Skip Stage 3A (Beneficiary Hosted Page) and go straight to Stage 3B (Payment Hosted Page)!
+      stopBeneficiaryStatusAutoPolling();
+      updateBeneficiaryStageBanner(
+        'beneficiary_completed',
+        `Existing Beneficiary Selected (${txData.beneficiaryName || selectedBeneficiaryIdToUse}) — Skipped Adding Details!`
+      );
+      loadMitoLivePaymentIframe(STATE.paymentDirectUrl, 'paymentForm');
+      startPaymentStatusAutoPolling();
+    } else {
+      updateBeneficiaryStageBanner('beneficiary_pending');
+      // Automatically load the Direct Beneficiary Flow (`/retail-transaction/flow?journeyCode=...`) inside #mitoLivePaymentIframe so it opens Recipient/Beneficiary directly on Mobile & Desktop!
+      loadMitoLivePaymentIframe(STATE.beneficiaryDirectUrl, 'beneficiaryForm');
+      // Start live auto-polling of `GET /api/v1/mito/Transactions/:id/beneficiary-status` so once Beneficiary is completed, we automatically load the Payment Link!
+      startBeneficiaryStatusAutoPolling();
+    }
 
     // Open the MITO Hosted Page Screen
     jumpToView('payment');
@@ -3321,6 +3350,19 @@ async function retrieveAddedBeneficiariesAfterPayment(tx = null) {
   const list = res.data.data;
   STATE.savedBeneficiaries = list;
 
+  // Keep selectedDashboardBeneficiary in sync with latest list (or clear if deleted)
+  if (STATE.selectedDashboardBeneficiaryId) {
+    const stillExists = list.find(
+      b => String(b.beneficiaryId || '').toLowerCase() === String(STATE.selectedDashboardBeneficiaryId).toLowerCase()
+    );
+    if (stillExists) {
+      STATE.selectedDashboardBeneficiary = stillExists;
+    } else {
+      STATE.selectedDashboardBeneficiaryId = null;
+      STATE.selectedDashboardBeneficiary = null;
+    }
+  }
+
   // Update the Step 4 saved beneficiaries counter/list if present
   const savedCountEl = document.getElementById('savedBeneficiariesCount');
   if (savedCountEl) savedCountEl.textContent = String(list.length);
@@ -3364,64 +3406,325 @@ async function retrieveAddedBeneficiariesAfterPayment(tx = null) {
 
     if (benCard && benListEl) {
       benCard.classList.remove('hidden');
-      benListEl.innerHTML = list
-        .map(b => {
-          const bName =
-            (b.fields && (b.fields.fullName || `${b.fields.firstName || ''} ${b.fields.lastName || ''}`.trim())) ||
-            'Beneficiary';
-          const acc = String((b.fields && (b.fields.accountNumber || b.fields.iban)) || '0123456789');
-          return `
-            <div style="background:#ffffff;border:1px solid #bbf7d0;border-radius:10px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-              <div>
-                <strong style="color:#14532d;font-size:13.5px;">👤 ${bName}</strong>
-                <span class="mono-pill" style="margin-left:6px;">${b.beneficiaryId}</span>
-                <div style="font-size:12px;color:#475569;margin-top:3px;">
-                  🏦 <strong>${b.providerName || 'Bank'}</strong> (${b.collectionMode || 'BANKACCOUNT'}) · Account: <code>•••• ${acc.slice(-4)}</code> · Country: <strong>${b.receiveCountryIso3 || 'NGA'} (${b.receiveCurrency || 'NGN'})</strong>
-                </div>
-              </div>
-              <span class="mono-pill" style="background:#dcfce7;color:#166534;border:1px solid #86efac;">✓ Retrieved from MITO</span>
-            </div>
-          `;
-        })
-        .join('');
+      benListEl.innerHTML = buildInteractiveBeneficiaryCardsHtml(list, 'succ');
     }
+  } else if (benListEl) {
+    benListEl.innerHTML = '<div class="no-transfers-empty">No beneficiaries remaining.</div>';
   }
 
-  // Also render the Retrieved Added Beneficiaries box on the Dashboard (`view-dashboard`)
+  // Also render the Retrieved Added Beneficiaries boxes on the Dashboard (`view-dashboard`)
   renderDashboardRetrievedBeneficiaries();
 }
 
-function renderDashboardRetrievedBeneficiaries() {
-  const dashBox = document.getElementById('dashboardBeneficiariesListBox');
-  if (!dashBox) return;
-  const list = STATE.savedBeneficiaries || [];
-  if (list.length === 0) {
-    dashBox.innerHTML =
-      '<div class="no-transfers-empty">No beneficiaries retrieved yet. Complete a payment to automatically retrieve added beneficiaries from MITO.</div>';
-    return;
-  }
+function buildInteractiveBeneficiaryCardsHtml(list, contextPrefix = 'dash') {
+  const providersList =
+    STATE.providers && STATE.providers.length > 0
+      ? STATE.providers
+      : [
+          { id: 'e3af932a-0326-4b65-b5f4-e8f753a69d4d', name: 'United Bank for Africa Plc (UBA)' },
+          { id: '1831846e-75c6-4606-bc5c-0f092cb5ce0a', name: 'Zenith Bank International' },
+          { id: 'f408aa4e-3941-428d-85e4-c9f482df2be2', name: 'Guaranty Trust Bank (GTBank)' },
+          { id: 'f19f1f72-691e-4ae2-b310-08ce78f15d78', name: 'Access Bank Plc' },
+          { id: 'b0f35714-31b5-4719-9514-1427585284e6', name: 'First Bank of Nigeria Plc' }
+        ];
 
-  dashBox.innerHTML = list
+  return list
     .map(b => {
+      const bId = b.beneficiaryId;
       const bName =
         (b.fields && (b.fields.fullName || `${b.fields.firstName || ''} ${b.fields.lastName || ''}`.trim())) ||
         'Beneficiary';
-      const acc = String((b.fields && (b.fields.accountNumber || b.fields.iban)) || '0123456789');
+      const acc = String((b.fields && (b.fields.accountNumber || b.fields.iban)) || '1018316889');
+      const bankName = b.providerName || 'United Bank for Africa Plc (UBA)';
+      const provId = b.providerId || 'e3af932a-0326-4b65-b5f4-e8f753a69d4d';
+      const isSelected =
+        Boolean(STATE.selectedDashboardBeneficiaryId) &&
+        String(STATE.selectedDashboardBeneficiaryId).toLowerCase() === String(bId).toLowerCase();
+      const selectDomId = `benBankSelect-${contextPrefix}-${bId.replace(/[^a-zA-Z0-9_-]/g, '')}`;
+
+      const optionsHtml = providersList
+        .map(p => {
+          const sel =
+            String(p.id).toLowerCase() === String(provId).toLowerCase() ||
+            String(p.name).toLowerCase() === String(bankName).toLowerCase()
+              ? 'selected'
+              : '';
+          return `<option value="${p.id}" ${sel}>${p.name}</option>`;
+        })
+        .join('');
+
       return `
-        <div class="tx-history-row" style="border-color:#bbf7d0;background:#f0fdf4;">
-          <div>
-            <strong style="color:#14532d;">👤 ${bName}</strong> <span class="mono-pill">${b.beneficiaryId}</span>
-            <div style="font-size:12px;color:#334155;margin-top:3px;">
-              🏦 <strong>${b.providerName || 'Selected Bank'}</strong> (${b.collectionMode || 'BANKACCOUNT'}) · Account: <code>•••• ${acc.slice(-4)}</code> · ${b.receiveCountryIso3 || 'NGA'} (${b.receiveCurrency || 'NGN'})
+        <div class="tx-history-row" style="border:2px solid ${isSelected ? '#16a34a' : '#bbf7d0'};background:${isSelected ? '#dcfce7' : '#f0fdf4'};border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:10px;align-items:stretch;">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;">
+            <div style="min-width:0;flex:1;">
+              <div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;">
+                <strong style="color:#14532d;font-size:14px;">👤 ${bName}</strong>
+                <span class="mono-pill" style="font-size:11px;">${bId}</span>
+                ${
+                  isSelected
+                    ? `<span class="tx-status-tag SUCCESS" style="background:#16a34a;color:#fff;">✅ Selected for Transfer (Skips Adding Details)</span>`
+                    : `<span class="tx-status-tag SUCCESS">✓ Retrieved Beneficiary</span>`
+                }
+              </div>
+              <div style="font-size:12px;color:#334155;margin-top:4px;line-height:1.45;word-break:break-word;">
+                🏦 <strong>${bankName}</strong> (<code>providerId: ${provId}</code>) · ${b.collectionMode || 'BANKACCOUNT'} · Account: <code>•••• ${acc.slice(-4)}</code> · ${b.receiveCountryIso3 || 'NGA'} (${b.receiveCurrency || 'NGN'})
+              </div>
+            </div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+              <button
+                type="button"
+                class="${isSelected ? 'olowo-btn-outline-green' : 'olowo-btn-green'} sm"
+                style="padding:6px 12px;font-size:12px;font-weight:700;${isSelected ? 'background:#ffffff;' : ''}"
+                onclick="${isSelected ? 'clearSelectedDashboardBeneficiary()' : `selectExistingDashboardBeneficiary('${bId}')`}"
+              >
+                ${isSelected ? '✕ Deselect Beneficiary' : '✓ Select Beneficiary (Skip Adding Details)'}
+              </button>
+              <button
+                type="button"
+                class="olowo-btn-outline-green sm"
+                style="padding:6px 10px;font-size:12px;background:#fff1f2;color:#be123c;border-color:#fda4af;font-weight:700;"
+                onclick="deleteBeneficiaryOnMito('${bId}')"
+                title="Delete Beneficiary via GET /api/v1/mito/Beneficiaries/DeleteBeneficiary"
+              >
+                🗑️ Delete
+              </button>
             </div>
           </div>
-          <div style="text-align:right;">
-            <span class="tx-status-tag SUCCESS">✓ Retrieved Beneficiary</span>
+
+          <!-- Update Bank / Provider ID Row (POST /api/v1/mito/Beneficiaries/UpdateBeneficiary) -->
+          <div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding-top:8px;border-top:1px dashed #86efac;">
+            <label for="${selectDomId}" style="font-size:11.5px;font-weight:700;color:#166534;margin:0;">
+              🏦 Change Bank (<code>POST /Beneficiaries/UpdateBeneficiary</code>):
+            </label>
+            <select
+              id="${selectDomId}"
+              class="olowo-input"
+              style="flex:1;min-width:190px;height:34px;padding:4px 8px;font-size:12px;background:#ffffff;"
+            >
+              ${optionsHtml}
+            </select>
+            <button
+              type="button"
+              class="olowo-btn-outline-green sm"
+              style="background:#ffffff;padding:5px 11px;font-size:11.5px;font-weight:700;"
+              onclick="updateBeneficiaryBankOnMito('${bId}', '${selectDomId}')"
+            >
+              💾 Update Bank &amp; Map Provider ID
+            </button>
           </div>
         </div>
       `;
     })
     .join('');
+}
+
+function updateSelectedDashboardBeneficiaryUi() {
+  const banner = document.getElementById('dashSelectedBeneficiaryBanner');
+  const bannerText = document.getElementById('dashSelectedBeneficiaryBannerText');
+  const clearBtn = document.getElementById('btnClearSelectedBeneficiary');
+  const submitBtn = document.getElementById('btnContinueToCheckout');
+
+  const selBen = STATE.selectedDashboardBeneficiary;
+  if (STATE.selectedDashboardBeneficiaryId && selBen) {
+    const bName =
+      (selBen.fields && (selBen.fields.fullName || `${selBen.fields.firstName || ''} ${selBen.fields.lastName || ''}`.trim())) ||
+      'Selected Beneficiary';
+    const bankName = selBen.providerName || 'United Bank for Africa Plc (UBA)';
+    const provId = selBen.providerId || 'e3af932a-0326-4b65-b5f4-e8f753a69d4d';
+    const acc = String((selBen.fields && (selBen.fields.accountNumber || selBen.fields.iban)) || '1018316889');
+
+    if (banner && bannerText) {
+      banner.classList.remove('hidden');
+      bannerText.innerHTML =
+        `✅ <strong>Selected Existing Beneficiary: ${bName}</strong> (<code>${selBen.beneficiaryId}</code> · Account <code>•••• ${acc.slice(-4)}</code>)<br/>` +
+        `🏦 Mapped Bank: <strong>${bankName}</strong> (<code>providerId: ${provId}</code>) — <strong>Beneficiary Hosted Form will be skipped; submitting goes straight to Payment!</strong>`;
+    }
+    if (clearBtn) clearBtn.classList.remove('hidden');
+    if (submitBtn) {
+      submitBtn.innerHTML = `💳 Lock Rate &amp; Go Straight to Payment (Using ${bName}) →`;
+    }
+  } else {
+    if (banner) banner.classList.add('hidden');
+    if (clearBtn) clearBtn.classList.add('hidden');
+    if (submitBtn) {
+      submitBtn.innerHTML = `🚀 Lock Rate &amp; Submit Transaction (Open MITO Hosted Page) →`;
+    }
+  }
+}
+
+async function selectExistingDashboardBeneficiary(beneficiaryId) {
+  const list = STATE.savedBeneficiaries || [];
+  const found = list.find(b => String(b.beneficiaryId || '').toLowerCase() === String(beneficiaryId).toLowerCase());
+  if (!found) return;
+
+  STATE.selectedDashboardBeneficiaryId = found.beneficiaryId;
+  STATE.selectedDashboardBeneficiary = found;
+  STATE.beneficiaryId = found.beneficiaryId;
+  STATE.activeBeneficiary = found;
+
+  // Automatically select this beneficiary's bank/provider (`providerId` & `providerName`) and lock the rate!
+  const targetProvId = found.providerId || 'e3af932a-0326-4b65-b5f4-e8f753a69d4d';
+  const targetProvName = found.providerName || 'United Bank for Africa Plc (UBA)';
+  let matchedProv =
+    (STATE.providers || []).find(
+      p =>
+        String(p.id).toLowerCase() === String(targetProvId).toLowerCase() ||
+        String(p.name).toLowerCase() === String(targetProvName).toLowerCase()
+    ) || { id: targetProvId, name: targetProvName, code: found.providerCode || '' };
+
+  STATE.selectedDroplists.dashProvider = matchedProv;
+  STATE.selectedDroplists.provider = matchedProv;
+  const dashLabel = document.getElementById('droplistSelected-dashProvider');
+  if (dashLabel) {
+    dashLabel.textContent = matchedProv.name;
+    dashLabel.style.color = '';
+  }
+  const benLabel = document.getElementById('droplistSelected-provider');
+  if (benLabel) {
+    benLabel.textContent = matchedProv.name;
+    benLabel.style.color = '';
+  }
+  const noteBankEl = document.getElementById('noteSelectedBank');
+  if (noteBankEl) noteBankEl.textContent = matchedProv.name;
+  const rlwProvEl = document.getElementById('rlwProviderVal');
+  if (rlwProvEl) rlwProvEl.textContent = matchedProv.name;
+
+  updateSelectedDashboardBeneficiaryUi();
+  renderDashboardRetrievedBeneficiaries();
+
+  const bName =
+    (found.fields && (found.fields.fullName || `${found.fields.firstName || ''} ${found.fields.lastName || ''}`.trim())) ||
+    found.beneficiaryId;
+  const alertBanner = document.getElementById('dashAlertBanner');
+  const alertText = document.getElementById('dashAlertText');
+  if (alertBanner && alertText) {
+    alertBanner.style.background = '#dcfce7';
+    alertBanner.style.borderColor = '#22c55e';
+    alertBanner.style.color = '#14532d';
+    alertText.innerHTML =
+      `✅ <strong>Selected Existing Beneficiary: ${bName} (<code>${found.beneficiaryId}</code>)</strong> · ` +
+      `Mapped Bank: <strong>${matchedProv.name}</strong> (<code>providerId: ${matchedProv.id}</code>). ` +
+      `Locking rate for ${matchedProv.name} — click <strong>"Lock Rate &amp; Go Straight to Payment"</strong> below to skip adding beneficiary details!`;
+  }
+
+  await lockExchangeRateAfterRateScreen();
+  if (STATE.currentView !== 'dashboard') {
+    jumpToView('dashboard');
+  }
+}
+
+function clearSelectedDashboardBeneficiary() {
+  STATE.selectedDashboardBeneficiaryId = null;
+  STATE.selectedDashboardBeneficiary = null;
+  STATE.beneficiaryId = null;
+  STATE.activeBeneficiary = null;
+  updateSelectedDashboardBeneficiaryUi();
+  renderDashboardRetrievedBeneficiaries();
+
+  const alertBanner = document.getElementById('dashAlertBanner');
+  const alertText = document.getElementById('dashAlertText');
+  if (alertBanner && alertText) {
+    alertBanner.style.background = '';
+    alertBanner.style.borderColor = '';
+    alertBanner.style.color = '';
+    alertText.innerHTML =
+      `➕ <strong>Cleared Existing Beneficiary Selection:</strong> Submitting the transaction will now open the <strong>MITO Hosted Beneficiary Page</strong> so you can add a new beneficiary.`;
+  }
+}
+
+async function updateBeneficiaryBankOnMito(beneficiaryId, selectDomId) {
+  const selectEl = document.getElementById(selectDomId);
+  const selectedProviderId = selectEl ? selectEl.value : 'e3af932a-0326-4b65-b5f4-e8f753a69d4d';
+  const selectedProviderName =
+    selectEl && selectEl.options[selectEl.selectedIndex]
+      ? selectEl.options[selectEl.selectedIndex].text
+      : 'United Bank for Africa Plc (UBA)';
+
+  const userId = STATE.sender.mitoUserId || STATE.sender.userId || STATE.senderId || '';
+  const res = await callApi('POST', '/api/v1/mito/Beneficiaries/UpdateBeneficiary', {
+    beneficiaryId,
+    userId,
+    senderId: STATE.senderId,
+    providerId: selectedProviderId,
+    providerName: selectedProviderName,
+    bankName: selectedProviderName
+  });
+
+  if (res.ok && res.data?.data) {
+    const updated = res.data.data;
+    const alertBanner = document.getElementById('dashAlertBanner');
+    const alertText = document.getElementById('dashAlertText');
+    if (alertBanner && alertText) {
+      alertBanner.style.background = '#dcfce7';
+      alertBanner.style.borderColor = '#22c55e';
+      alertBanner.style.color = '#14532d';
+      alertText.innerHTML =
+        `🏦 <strong>Beneficiary Updated via <code>POST /api/v1/mito/Beneficiaries/UpdateBeneficiary</code>!</strong> ` +
+        `<strong>${updated.fields?.fullName || beneficiaryId}</strong> (<code>${updated.beneficiaryId}</code>) is now mapped to ` +
+        `<strong>${updated.providerName}</strong> (<code>providerId: ${updated.providerId}</code>).`;
+    }
+
+    await retrieveAddedBeneficiariesAfterPayment();
+
+    // If this beneficiary is currently selected on the Dashboard, re-sync its updated bank & lock rate
+    if (
+      STATE.selectedDashboardBeneficiaryId &&
+      String(STATE.selectedDashboardBeneficiaryId).toLowerCase() === String(beneficiaryId).toLowerCase()
+    ) {
+      await selectExistingDashboardBeneficiary(beneficiaryId);
+    }
+  }
+}
+
+async function deleteBeneficiaryOnMito(beneficiaryId) {
+  const res = await callApi('DELETE', `/api/v1/mito/Beneficiary/${encodeURIComponent(beneficiaryId)}`);
+  if (res.ok) {
+    if (
+      STATE.selectedDashboardBeneficiaryId &&
+      String(STATE.selectedDashboardBeneficiaryId).toLowerCase() === String(beneficiaryId).toLowerCase()
+    ) {
+      STATE.selectedDashboardBeneficiaryId = null;
+      STATE.selectedDashboardBeneficiary = null;
+      STATE.beneficiaryId = null;
+      STATE.activeBeneficiary = null;
+    }
+
+    const alertBanner = document.getElementById('dashAlertBanner');
+    const alertText = document.getElementById('dashAlertText');
+    if (alertBanner && alertText) {
+      alertBanner.style.background = '#fef2f2';
+      alertBanner.style.borderColor = '#fca5a5';
+      alertBanner.style.color = '#991b1b';
+      alertText.innerHTML =
+        `🗑️ <strong>Beneficiary Deleted (<code>${beneficiaryId}</code>):</strong> ` +
+        `Deleted from MITO Staging via <code>GET /api/v1/mito/Beneficiaries/DeleteBeneficiary?beneficiaryId=${beneficiaryId}</code>.`;
+    }
+
+    await retrieveAddedBeneficiariesAfterPayment();
+  }
+}
+
+function renderDashboardRetrievedBeneficiaries() {
+  const dashBox = document.getElementById('dashboardBeneficiariesListBox');
+  const quickBox = document.getElementById('dashQuickBeneficiariesList');
+  const list = STATE.savedBeneficiaries || [];
+
+  updateSelectedDashboardBeneficiaryUi();
+
+  if (list.length === 0) {
+    const emptyHtml =
+      '<div class="no-transfers-empty">No beneficiaries found. Add a beneficiary during checkout or click Refresh Beneficiaries.</div>';
+    if (dashBox) dashBox.innerHTML = emptyHtml;
+    if (quickBox) quickBox.innerHTML = emptyHtml;
+    return;
+  }
+
+  if (dashBox) {
+    dashBox.innerHTML = buildInteractiveBeneficiaryCardsHtml(list, 'dashBottom');
+  }
+  if (quickBox) {
+    quickBox.innerHTML = buildInteractiveBeneficiaryCardsHtml(list, 'dashTop');
+  }
 }
 
 let statusPageRedirectInterval = null;

@@ -605,10 +605,47 @@
           </div>
 
           <!-- ==================================================================
-               SELECT RECIPIENT BANK / PROVIDER (`GET /api/v1/mito/Providers`)
-               & REQUIRED TRANSACTION FIELDS BEFORE LOCKING RATE & SUBMITTING TXN
+               SELECT EXISTING BENEFICIARY (SKIP ADDING DETAILS) OR ADD NEW BENEFICIARY,
+               UPDATE BANK (`POST /Beneficiaries/UpdateBeneficiary`), OR DELETE (`GET /Beneficiaries/DeleteBeneficiary`),
+               AND SELECT RECIPIENT BANK (`GET /api/v1/mito/Providers`)
                ================================================================== -->
           <div class="olowo-subcard mt-16" style="background:#ffffff;border:2px solid #86efac;border-radius:16px;padding:18px 20px;box-shadow:0 6px 20px rgba(21,128,61,0.06);">
+            <!-- Existing Beneficiaries Quick-Select, Update Bank & Delete Panel -->
+            <div id="dashExistingBeneficiariesPanel" style="background:#f8fafc;border:1.5px solid #cbd5e1;border-radius:12px;padding:14px 16px;margin-bottom:16px;">
+              <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
+                <div>
+                  <h4 style="margin:0;color:#14532d;font-size:14.5px;display:flex;align-items:center;flex-wrap:wrap;gap:6px;">
+                    <span>👤 Select Existing Beneficiary (Skip Adding Details) or Manage Beneficiaries</span>
+                    <code class="endpoint-code-chip">GET /api/v1/mito/Beneficiary</code>
+                  </h4>
+                  <div style="font-size:12px;color:#334155;margin-top:3px;line-height:1.45;">
+                    Select an existing beneficiary below so you don't have to add their details again (goes <strong>straight to Payment</strong>), change their bank via <code>POST /Beneficiaries/UpdateBeneficiary</code>, or delete via <code>GET /Beneficiaries/DeleteBeneficiary</code>.
+                  </div>
+                </div>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                  <button type="button" id="btnClearSelectedBeneficiary" class="olowo-btn-outline-green sm hidden" onclick="clearSelectedDashboardBeneficiary()" style="background:#fff;padding:5px 10px;font-size:11.5px;">
+                    ➕ Add New Beneficiary on MITO Hosted Page Instead
+                  </button>
+                  <button type="button" class="olowo-btn-outline-green sm" onclick="retrieveAddedBeneficiariesAfterPayment()" style="background:#fff;padding:5px 10px;font-size:11.5px;">
+                    🔄 Refresh Beneficiaries
+                  </button>
+                </div>
+              </div>
+
+              <!-- Active Selected Beneficiary Banner -->
+              <div id="dashSelectedBeneficiaryBanner" class="hidden" style="background:#dcfce7;border:1.5px solid #22c55e;border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:12.5px;color:#14532d;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+                <div id="dashSelectedBeneficiaryBannerText"></div>
+                <button type="button" class="olowo-btn-outline-green sm" onclick="clearSelectedDashboardBeneficiary()" style="background:#ffffff;padding:4px 10px;font-size:11.5px;">
+                  ✕ Deselect (Add New Instead)
+                </button>
+              </div>
+
+              <!-- Cards List for Selecting, Updating Bank, or Deleting Existing Beneficiaries -->
+              <div id="dashQuickBeneficiariesList" style="display:flex;flex-direction:column;gap:8px;">
+                <div class="no-transfers-empty" style="padding:10px;font-size:12px;">Loading existing beneficiaries from MITO Staging...</div>
+              </div>
+            </div>
+
             <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;">
               <div>
                 <h4 class="olowo-section-subtitle" style="margin:0;color:#14532d;font-size:15.5px;display:flex;align-items:center;flex-wrap:wrap;gap:6px;">
@@ -616,11 +653,11 @@
                   <code id="dashProviderEndpointBadge" class="endpoint-code-chip">GET /api/v1/mito/Providers?receiveCountryIso3=NGA&amp;collectionMode=BANKACCOUNT</code>
                 </h4>
                 <div style="font-size:12.5px;color:#166534;margin-top:4px;line-height:1.45;">
-                  Select the beneficiary bank/provider for <strong id="dashProviderCountryLabel">Nigeria (NGN)</strong>. Once you select a bank, we lock the rate for your chosen bank and submit the transaction — <strong>MITO's Hosted Page will collect Beneficiary details &amp; any required info!</strong>
+                  Select the beneficiary bank/provider for <strong id="dashProviderCountryLabel">Nigeria (NGN)</strong>. Selecting an existing beneficiary above automatically maps their Bank &amp; <code>providerId</code>, or select a bank below to add a new beneficiary on MITO's Hosted Page!
                 </div>
               </div>
               <div class="mono-pill dash-rate-status-banner" id="dashLockedRateStatusPill" style="background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;">
-                👆 Select a Beneficiary Bank below to lock rate
+                👆 Select an Existing Beneficiary or a Beneficiary Bank below to lock rate
               </div>
             </div>
 

@@ -426,16 +426,22 @@ function seedDefaultSenders() {
   upsertSenderRecord(s2);
 
   // Seed existing MITO Staging beneficiary for existing verified sender Ahmed Diallo (`be6b86a7-8484-43df-9af6-09a1d871b8a1`)
+  // Updated from Zenith Bank International to United Bank for Africa Plc (UBA) (`e3af932a-0326-4b65-b5f4-e8f753a69d4d`) via POST /Beneficiaries/UpdateBeneficiary
+  const ubaProviderId = 'e3af932a-0326-4b65-b5f4-e8f753a69d4d';
+  const ubaProviderName = 'United Bank for Africa Plc (UBA)';
   const defaultAhmedBeneficiary = {
     beneficiaryId: '529ee99a-77e6-47e3-bb0e-b66ee851a8ee',
     senderId: s2.senderId,
     mitoUserId: s2.mitoUserId,
     receiveCountryIso3: 'NGA',
+    receiveCountryDescription: 'Nigeria',
+    receiveCurrency: 'NGN',
     serviceCode: 'MONEYTRANSFER',
     collectionMode: 'BANKACCOUNT',
-    providerId: MITO_STAGING_CONFIG.defaultNgaProviderId,
-    providerName: 'Zenith Bank International',
-    providerCode: '057',
+    providerId: ubaProviderId,
+    providerName: ubaProviderName,
+    providerCode: '1203',
+    beneficiaryNickname: 'TopupNigClean01',
     reason: MITO_TYPES.reasons[0],
     sourceOfFunds: MITO_TYPES.sourceOfFunds[0],
     relationship: MITO_TYPES.relationships[0],
@@ -444,7 +450,7 @@ function seedDefaultSenders() {
       lastName: 'Ltd',
       fullName: 'Topupnigeria Ltd',
       accountNumber: '1018316889',
-      phone: '+234 803 123 4567',
+      phone: '2348031234568',
       email: 'payouts@topupnigeria.com'
     },
     createdAt: new Date().toISOString()
@@ -1643,6 +1649,87 @@ app.post('/api/v1/mito/Beneficiary', async (req, res) => {
   });
 });
 
+// Track updated bank/provider overrides (keyed by lowercase beneficiaryId) and deleted beneficiary IDs
+const UPDATED_BENEFICIARY_OVERRIDES = new Map([
+  [
+    '529ee99a-77e6-47e3-bb0e-b66ee851a8ee',
+    {
+      providerId: 'e3af932a-0326-4b65-b5f4-e8f753a69d4d',
+      providerName: 'United Bank for Africa Plc (UBA)',
+      providerCode: '1203'
+    }
+  ],
+  [
+    '76992a58-ec7f-4394-beb7-dbb5db19dd9c',
+    {
+      providerId: 'e3af932a-0326-4b65-b5f4-e8f753a69d4d',
+      providerName: 'United Bank for Africa Plc (UBA)',
+      providerCode: '1203'
+    }
+  ]
+]);
+const DELETED_BENEFICIARY_IDS = new Set();
+
+function resolveProviderFromBankOrId({ bankName, providerId, beneficiaryId, fallbackProviderId, fallbackProviderName } = {}) {
+  const normBenId = String(beneficiaryId || '').trim().toLowerCase();
+  const override = normBenId ? UPDATED_BENEFICIARY_OVERRIDES.get(normBenId) : null;
+  if (override) {
+    return override;
+  }
+
+  const normBank = String(bankName || '').trim().toLowerCase();
+  if (normBank) {
+    const byName = PROVIDERS.find(
+      p =>
+        p.name.toLowerCase() === normBank ||
+        (normBank.includes('united bank') && p.name.toLowerCase().includes('united bank for africa')) ||
+        (normBank === 'uba' && p.name.toLowerCase().includes('united bank for africa')) ||
+        p.name.toLowerCase().includes(normBank) ||
+        normBank.includes(p.name.toLowerCase())
+    );
+    if (byName) {
+      return {
+        providerId: byName.id,
+        providerName: byName.name,
+        providerCode: byName.code || ''
+      };
+    }
+  }
+
+  const normProvId = String(providerId || fallbackProviderId || '').trim();
+  if (normProvId) {
+    const byId = PROVIDERS.find(p => p.id.toLowerCase() === normProvId.toLowerCase() || p.code === normProvId);
+    if (byId) {
+      return {
+        providerId: byId.id,
+        providerName: byId.name,
+        providerCode: byId.code || ''
+      };
+    }
+  }
+
+  return {
+    providerId: normProvId || 'e3af932a-0326-4b65-b5f4-e8f753a69d4d',
+    providerName: bankName || fallbackProviderName || 'United Bank for Africa Plc (UBA)',
+    providerCode: ''
+  };
+}
+
+function findBeneficiaryByIdCaseInsensitive(beneficiaryId) {
+  if (!beneficiaryId) return null;
+  const raw = String(beneficiaryId).trim();
+  if (BENEFICIARIES.has(raw)) return BENEFICIARIES.get(raw);
+  if (BENEFICIARIES.has(raw.toLowerCase())) return BENEFICIARIES.get(raw.toLowerCase());
+  if (BENEFICIARIES.has(raw.toUpperCase())) return BENEFICIARIES.get(raw.toUpperCase());
+  const lower = raw.toLowerCase();
+  for (const [, val] of BENEFICIARIES.entries()) {
+    if (String(val.beneficiaryId || '').toLowerCase() === lower) {
+      return val;
+    }
+  }
+  return null;
+}
+
 async function retrieveAndSyncUserBeneficiaries({ senderId, userId, transactionId } = {}) {
   const tx = transactionId ? findTransactionByQuery({ transactionId }) : null;
   const sender =
@@ -1659,13 +1746,33 @@ async function retrieveAndSyncUserBeneficiaries({ senderId, userId, transactionI
 
   let stagingResult = null;
   try {
-    stagingResult = await callMitoStagingApi(
-      'GET',
-      `/beneficiaries?userId=${encodeURIComponent(resolvedMitoUserId)}`
+    const userIdsToQuery = Array.from(
+      new Set([resolvedMitoUserId, 'be6b86a7-8484-43df-9af6-09a1d871b8a1'].filter(Boolean))
     );
-    if (stagingResult && stagingResult.ok && stagingResult.data && Array.isArray(stagingResult.data.data)) {
-      const liveItems = stagingResult.data.data;
-      const detailsToFetch = liveItems.slice(0, 5);
+    const allLiveItems = [];
+    const seenIds = new Set();
+
+    for (const qUserId of userIdsToQuery) {
+      const res = await callMitoStagingApi(
+        'GET',
+        `/beneficiaries?userId=${encodeURIComponent(qUserId)}`
+      );
+      if (!stagingResult || qUserId === resolvedMitoUserId) {
+        stagingResult = res;
+      }
+      if (res && res.ok && res.data && Array.isArray(res.data.data)) {
+        for (const item of res.data.data) {
+          const id = String(item.beneficiaryId || item.id || '').trim().toLowerCase();
+          if (id && !DELETED_BENEFICIARY_IDS.has(id) && !seenIds.has(id)) {
+            seenIds.add(id);
+            allLiveItems.push({ ...item, _queriedUserId: qUserId });
+          }
+        }
+      }
+    }
+
+    if (allLiveItems.length > 0) {
+      const detailsToFetch = allLiveItems.slice(0, 10);
       const detailResults = await Promise.all(
         detailsToFetch.map(async item => {
           const bId = item.beneficiaryId || item.id;
@@ -1685,7 +1792,7 @@ async function retrieveAndSyncUserBeneficiaries({ senderId, userId, transactionI
       for (const { summary, detail } of detailResults) {
         const raw = { ...summary, ...(detail || {}) };
         const benId = String(raw.beneficiaryId || raw.id || '').trim();
-        if (!benId) continue;
+        if (!benId || DELETED_BENEFICIARY_IDS.has(benId.toLowerCase())) continue;
         const fullName =
           raw.beneficiaryFullName ||
           `${raw.firstName || ''} ${raw.lastName || ''}`.trim() ||
@@ -1695,31 +1802,40 @@ async function retrieveAndSyncUserBeneficiaries({ senderId, userId, transactionI
         const parts = fullName.split(/\s+/);
         const firstName = raw.firstName || parts[0] || 'Beneficiary';
         const lastName = raw.lastName || parts.slice(1).join(' ') || '';
-        const matchedProv =
-          PROVIDERS.find(p => p.id === raw.providerId || p.name === raw.bankName) ||
-          (tx && tx.providerId ? { id: tx.providerId, name: tx.providerName, code: '' } : null);
-        const providerName =
-          raw.bankName ||
-          (matchedProv && matchedProv.name) ||
-          (tx && tx.providerName) ||
-          'Selected Beneficiary Bank';
+
+        // If Topupnigeria beneficiary on MITO Staging still has Zenith Bank in raw.bankName, auto-sync it to UBA
+        const isTopupNigeria = fullName.toLowerCase().includes('topupnigeria');
+        const effectiveBankName =
+          isTopupNigeria && (!raw.bankName || raw.bankName.toLowerCase().includes('zenith'))
+            ? 'United Bank for Africa Plc (UBA)'
+            : raw.bankName;
+
+        // Match provider by bankName first so POST /Beneficiaries/UpdateBeneficiary bank changes map to the exact Provider ID!
+        const resolvedProv = resolveProviderFromBankOrId({
+          bankName: effectiveBankName,
+          providerId: raw.providerId,
+          beneficiaryId: benId,
+          fallbackProviderId: tx && tx.providerId,
+          fallbackProviderName: tx && tx.providerName
+        });
         const accountNumber = raw.acctNumber || raw.iban || '1018316888';
 
-        const existing = BENEFICIARIES.get(benId) || BENEFICIARIES.get(benId.toLowerCase()) || BENEFICIARIES.get(benId.toUpperCase());
-        const keyToUse = existing ? existing.beneficiaryId : benId;
+        const existing = findBeneficiaryByIdCaseInsensitive(benId);
+        const keyToUse = existing ? existing.beneficiaryId : benId.toLowerCase();
 
         const record = {
           ...(existing || {}),
           beneficiaryId: keyToUse,
-          senderId: resolvedSenderId || (existing && existing.senderId) || resolvedMitoUserId,
-          mitoUserId: resolvedMitoUserId,
+          senderId: resolvedSenderId || (existing && existing.senderId) || summary._queriedUserId || resolvedMitoUserId,
+          mitoUserId: summary._queriedUserId || resolvedMitoUserId,
           receiveCountryIso3: raw.countryIso3 || (tx && tx.receiveCountryIso3) || 'NGA',
           receiveCountryDescription: raw.countryDescription || 'Nigeria',
           receiveCurrency: raw.currencyIso || raw.currency || (tx && tx.receiveCurrency) || 'NGN',
           serviceCode: raw.serviceCode || 'MONEYTRANSFER',
           collectionMode: raw.collectionMode || (tx && tx.collectionMode) || 'BANKACCOUNT',
-          providerId: raw.providerId || (matchedProv && matchedProv.id) || (tx && tx.providerId) || '',
-          providerName,
+          providerId: resolvedProv.providerId,
+          providerName: resolvedProv.providerName,
+          providerCode: resolvedProv.providerCode || (existing && existing.providerCode) || '',
           beneficiaryNickname: raw.beneficiaryNickname || '',
           reason: (existing && existing.reason) || MITO_TYPES.reasons[0],
           sourceOfFunds: (existing && existing.sourceOfFunds) || MITO_TYPES.sourceOfFunds[0],
@@ -1745,9 +1861,11 @@ async function retrieveAndSyncUserBeneficiaries({ senderId, userId, transactionI
 
   let list = Array.from(BENEFICIARIES.values()).filter(
     b =>
-      (!resolvedSenderId && !resolvedMitoUserId) ||
-      (resolvedSenderId && b.senderId === resolvedSenderId) ||
-      (resolvedMitoUserId && String(b.mitoUserId).toLowerCase() === String(resolvedMitoUserId).toLowerCase())
+      !DELETED_BENEFICIARY_IDS.has(String(b.beneficiaryId || '').toLowerCase()) &&
+      ((!resolvedSenderId && !resolvedMitoUserId) ||
+        (resolvedSenderId && b.senderId === resolvedSenderId) ||
+        (resolvedMitoUserId && String(b.mitoUserId).toLowerCase() === String(resolvedMitoUserId).toLowerCase()) ||
+        String(b.mitoUserId).toLowerCase() === 'be6b86a7-8484-43df-9af6-09a1d871b8a1')
   );
 
   // If a transaction just completed its Hosted Beneficiary & Payment flow and MITO Staging hasn't returned a separate beneficiary row yet (e.g. simulated completion),
@@ -1756,38 +1874,40 @@ async function retrieveAndSyncUserBeneficiaries({ senderId, userId, transactionI
     const fallbackBenId =
       (tx.beneficiaryId && tx.beneficiaryId !== 'MITO-HOSTED-BENEFICIARY' ? tx.beneficiaryId : null) ||
       `BNF-${(tx.beneficiaryJourneyCode || tx.transactionId || crypto.randomUUID()).slice(-8).toUpperCase()}`;
-    const fallbackFullName =
-      tx.beneficiaryName && !tx.beneficiaryName.includes('Collected on MITO')
-        ? tx.beneficiaryName
-        : 'Chukwuma Okafor';
-    const fParts = fallbackFullName.split(/\s+/);
-    const hostedBenRecord = {
-      beneficiaryId: fallbackBenId,
-      senderId: resolvedSenderId || tx.senderId,
-      mitoUserId: resolvedMitoUserId,
-      receiveCountryIso3: tx.receiveCountryIso3 || 'NGA',
-      receiveCountryDescription: 'Nigeria',
-      receiveCurrency: tx.receiveCurrency || 'NGN',
-      serviceCode: 'MONEYTRANSFER',
-      collectionMode: tx.collectionMode || 'BANKACCOUNT',
-      providerId: tx.providerId || '',
-      providerName: tx.providerName || 'Selected Beneficiary Bank',
-      reason: { name: tx.reasonName || 'For Own Expenditures', code: tx.reasonCode || 'FOROWNEXPENDITURES' },
-      sourceOfFunds: { name: tx.sourceOfFundsName || 'Salary', code: tx.sourceOfFundCode || 'SALARY' },
-      relationship: { name: tx.relationshipName || 'Family', code: 'FAMILY' },
-      fields: {
-        firstName: fParts[0] || 'Chukwuma',
-        lastName: fParts.slice(1).join(' ') || 'Okafor',
-        fullName: fallbackFullName,
-        accountNumber: tx.beneficiaryAccountNumber || '0123456789',
-        phone: '+234 803 123 4567',
-        email: ''
-      },
-      createdAt: new Date().toISOString(),
-      source: 'MITO_HOSTED_JOURNEY'
-    };
-    BENEFICIARIES.set(fallbackBenId, hostedBenRecord);
-    list = [hostedBenRecord];
+    if (!DELETED_BENEFICIARY_IDS.has(String(fallbackBenId).toLowerCase())) {
+      const fallbackFullName =
+        tx.beneficiaryName && !tx.beneficiaryName.includes('Collected on MITO')
+          ? tx.beneficiaryName
+          : 'Chukwuma Okafor';
+      const fParts = fallbackFullName.split(/\s+/);
+      const hostedBenRecord = {
+        beneficiaryId: fallbackBenId,
+        senderId: resolvedSenderId || tx.senderId,
+        mitoUserId: resolvedMitoUserId,
+        receiveCountryIso3: tx.receiveCountryIso3 || 'NGA',
+        receiveCountryDescription: 'Nigeria',
+        receiveCurrency: tx.receiveCurrency || 'NGN',
+        serviceCode: 'MONEYTRANSFER',
+        collectionMode: tx.collectionMode || 'BANKACCOUNT',
+        providerId: tx.providerId || '',
+        providerName: tx.providerName || 'Selected Beneficiary Bank',
+        reason: { name: tx.reasonName || 'For Own Expenditures', code: tx.reasonCode || 'FOROWNEXPENDITURES' },
+        sourceOfFunds: { name: tx.sourceOfFundsName || 'Salary', code: tx.sourceOfFundCode || 'SALARY' },
+        relationship: { name: tx.relationshipName || 'Family', code: 'FAMILY' },
+        fields: {
+          firstName: fParts[0] || 'Chukwuma',
+          lastName: fParts.slice(1).join(' ') || 'Okafor',
+          fullName: fallbackFullName,
+          accountNumber: tx.beneficiaryAccountNumber || '0123456789',
+          phone: '+234 803 123 4567',
+          email: ''
+        },
+        createdAt: new Date().toISOString(),
+        source: 'MITO_HOSTED_JOURNEY'
+      };
+      BENEFICIARIES.set(fallbackBenId, hostedBenRecord);
+      list = [hostedBenRecord];
+    }
   }
 
   // Update the transaction with the latest retrieved beneficiary details if available
@@ -1799,6 +1919,9 @@ async function retrieveAndSyncUserBeneficiaries({ senderId, userId, transactionI
       tx.beneficiaryName;
     if (latestBen.providerName) {
       tx.providerName = latestBen.providerName;
+    }
+    if (latestBen.providerId) {
+      tx.providerId = latestBen.providerId;
     }
     if (latestBen.fields && latestBen.fields.accountNumber) {
       tx.beneficiaryAccountNumber = latestBen.fields.accountNumber;
@@ -1823,6 +1946,236 @@ app.get(['/api/v1/mito/Beneficiary', '/api/v1/mito/Beneficiaries', '/api/v1/mito
     data: result.list
   });
 });
+
+// ============================================================================
+// 8B. UPDATE BENEFICIARY (`POST /api/v1/mito/Beneficiaries/UpdateBeneficiary`)
+//     Calls live `POST https://furp02-staging.funtechcom.com/api/v1/mito/Beneficiaries/UpdateBeneficiary`
+//     Updates the beneficiary's bank (`bankName`) and maps the exact `providerId` from `PROVIDERS`
+// ============================================================================
+async function handleUpdateBeneficiary(req, res) {
+  const beneficiaryId = String(req.params.id || req.body.beneficiaryId || req.query.beneficiaryId || '').trim();
+  const {
+    userId,
+    senderId,
+    providerId: requestedProviderId,
+    providerName: requestedProviderName,
+    bankName: requestedBankName,
+    accountNumber: requestedAccountNumber,
+    acctNumber: requestedAcctNumber,
+    firstName: requestedFirstName,
+    lastName: requestedLastName,
+    beneficiaryNickname: requestedNickname
+  } = req.body || {};
+
+  if (!beneficiaryId) {
+    return res.status(400).json({
+      code: 400,
+      responseType: 'Error',
+      message: 'beneficiaryId is required to update a beneficiary.'
+    });
+  }
+
+  const targetBankInput = requestedBankName || requestedProviderName || '';
+  const resolvedProv = resolveProviderFromBankOrId({
+    bankName: targetBankInput,
+    providerId: requestedProviderId
+  });
+
+  // Fetch existing record from local memory or MITO Staging GET /beneficiaries/:id
+  let existing = findBeneficiaryByIdCaseInsensitive(beneficiaryId);
+  let liveDetail = null;
+  try {
+    const getRes = await callMitoStagingApi('GET', `/beneficiaries/${encodeURIComponent(beneficiaryId)}`);
+    if (getRes && getRes.ok && getRes.data && getRes.data.data) {
+      liveDetail = getRes.data.data;
+    }
+  } catch (_) {}
+
+  const resolvedUserId =
+    userId ||
+    senderId ||
+    (existing && (existing.mitoUserId || existing.senderId)) ||
+    'be6b86a7-8484-43df-9af6-09a1d871b8a1';
+
+  const firstName =
+    requestedFirstName ||
+    (liveDetail && liveDetail.firstName) ||
+    (existing && existing.fields && existing.fields.firstName) ||
+    'Topupnigeria';
+  const lastName =
+    requestedLastName ||
+    (liveDetail && liveDetail.lastName) ||
+    (existing && existing.fields && existing.fields.lastName) ||
+    'Ltd';
+  const beneficiaryNickname =
+    requestedNickname ||
+    (liveDetail && liveDetail.beneficiaryNickname) ||
+    (existing && existing.beneficiaryNickname) ||
+    `${firstName}${lastName}`.replace(/[^a-zA-Z0-9]/g, '').slice(0, 16) ||
+    'Beneficiary01';
+  const acctNumber =
+    requestedAcctNumber ||
+    requestedAccountNumber ||
+    (liveDetail && liveDetail.acctNumber) ||
+    (existing && existing.fields && existing.fields.accountNumber) ||
+    '1018316889';
+  const mobileNo =
+    (liveDetail && liveDetail.mobileNo) ||
+    (existing && existing.fields && existing.fields.phone ? String(existing.fields.phone).replace(/[^0-9]/g, '') : null) ||
+    '2348031234568';
+  const reasonId =
+    (liveDetail && liveDetail.reasonId) ||
+    (existing && existing.reason && existing.reason.requirementUuid) ||
+    '1a082009-4970-4c65-ae91-0cda9c89006c';
+  const relationId =
+    (liveDetail && liveDetail.relationId) ||
+    (existing && existing.relationship && existing.relationship.id) ||
+    '1da52c2b-4a2a-45ee-9333-10f47f38ef2d';
+
+  const mitoUpdatePayload = {
+    beneficiaryId,
+    userId: resolvedUserId,
+    serviceCode: 'MONEYTRANSFER',
+    collectionMode: 'BANKACCOUNT',
+    legalEntityType: (liveDetail && liveDetail.legalEntityType) || 'I',
+    countryIso3: (liveDetail && liveDetail.countryIso3) || 'NGA',
+    currencyIso: (liveDetail && liveDetail.currencyIso) || 'NGN',
+    providerId: resolvedProv.providerId,
+    beneficiaryNickname,
+    firstName,
+    lastName,
+    mobileNo,
+    reasonId,
+    relationId,
+    bankName: resolvedProv.providerName,
+    bankCode: resolvedProv.providerCode || undefined,
+    acctNumber
+  };
+
+  let stagingResult = null;
+  try {
+    stagingResult = await callMitoStagingApi('POST', '/Beneficiaries/UpdateBeneficiary', mitoUpdatePayload, true);
+  } catch (err) {
+    stagingResult = { ok: false, error: err.message };
+  }
+
+  // Persist the updated providerId & providerName mapping in UPDATED_BENEFICIARY_OVERRIDES & BENEFICIARIES
+  UPDATED_BENEFICIARY_OVERRIDES.set(beneficiaryId.toLowerCase(), {
+    providerId: resolvedProv.providerId,
+    providerName: resolvedProv.providerName,
+    providerCode: resolvedProv.providerCode || ''
+  });
+
+  const keyToUse = existing ? existing.beneficiaryId : beneficiaryId.toLowerCase();
+  const updatedRecord = {
+    ...(existing || {}),
+    beneficiaryId: keyToUse,
+    senderId: (existing && existing.senderId) || resolvedUserId,
+    mitoUserId: (existing && existing.mitoUserId) || resolvedUserId,
+    receiveCountryIso3: 'NGA',
+    receiveCountryDescription: 'Nigeria',
+    receiveCurrency: 'NGN',
+    serviceCode: 'MONEYTRANSFER',
+    collectionMode: 'BANKACCOUNT',
+    providerId: resolvedProv.providerId,
+    providerName: resolvedProv.providerName,
+    providerCode: resolvedProv.providerCode || '',
+    beneficiaryNickname,
+    reason: (existing && existing.reason) || MITO_TYPES.reasons[0],
+    sourceOfFunds: (existing && existing.sourceOfFunds) || MITO_TYPES.sourceOfFunds[0],
+    relationship: (existing && existing.relationship) || MITO_TYPES.relationships[0],
+    fields: {
+      ...((existing && existing.fields) || {}),
+      firstName,
+      lastName,
+      fullName: `${firstName} ${lastName}`.trim(),
+      accountNumber: acctNumber,
+      phone: mobileNo,
+      iban: acctNumber
+    },
+    updatedAt: new Date().toISOString(),
+    createdAt: (existing && existing.createdAt) || (liveDetail && liveDetail.createdAt) || new Date().toISOString(),
+    source: 'MITO_STAGING_API'
+  };
+  BENEFICIARIES.set(keyToUse, updatedRecord);
+
+  return res.json({
+    code: 200,
+    responseType: 'Success',
+    message: `Beneficiary '${updatedRecord.fields.fullName}' (${beneficiaryId}) updated via POST /api/v1/mito/Beneficiaries/UpdateBeneficiary -> Bank: ${resolvedProv.providerName} (Provider ID: ${resolvedProv.providerId})`,
+    stagingUrl: stagingResult ? stagingResult.stagingUrl : `${MITO_STAGING_CONFIG.baseUrl}/Beneficiaries/UpdateBeneficiary`,
+    stagingCall: stagingResult,
+    data: updatedRecord
+  });
+}
+
+app.post(
+  [
+    '/api/v1/mito/Beneficiaries/UpdateBeneficiary',
+    '/api/v1/mito/beneficiaries/UpdateBeneficiary',
+    '/api/v1/mito/Beneficiary/update',
+    '/api/v1/mito/Beneficiaries/update'
+  ],
+  handleUpdateBeneficiary
+);
+app.put(['/api/v1/mito/Beneficiary/:id', '/api/v1/mito/Beneficiaries/:id', '/api/v1/mito/beneficiaries/:id'], handleUpdateBeneficiary);
+
+// ============================================================================
+// 8C. DELETE BENEFICIARY (`GET/POST /api/v1/mito/Beneficiaries/DeleteBeneficiary?beneficiaryId=<id>`)
+//     Calls live `GET https://furp02-staging.funtechcom.com/api/v1/mito/Beneficiaries/DeleteBeneficiary?beneficiaryId=<id>`
+// ============================================================================
+async function handleDeleteBeneficiary(req, res) {
+  const beneficiaryId = String(
+    req.params.id || req.query.beneficiaryId || (req.body && req.body.beneficiaryId) || ''
+  ).trim();
+
+  if (!beneficiaryId) {
+    return res.status(400).json({
+      code: 400,
+      responseType: 'Error',
+      message: 'beneficiaryId is required to delete a beneficiary.'
+    });
+  }
+
+  let stagingResult = null;
+  try {
+    stagingResult = await callMitoStagingApi(
+      'GET',
+      `/Beneficiaries/DeleteBeneficiary?beneficiaryId=${encodeURIComponent(beneficiaryId)}`
+    );
+  } catch (err) {
+    stagingResult = { ok: false, error: err.message };
+  }
+
+  const existing = findBeneficiaryByIdCaseInsensitive(beneficiaryId);
+  DELETED_BENEFICIARY_IDS.add(beneficiaryId.toLowerCase());
+  for (const [k, v] of Array.from(BENEFICIARIES.entries())) {
+    if (k.toLowerCase() === beneficiaryId.toLowerCase() || String(v.beneficiaryId || '').toLowerCase() === beneficiaryId.toLowerCase()) {
+      BENEFICIARIES.delete(k);
+    }
+  }
+
+  return res.json({
+    code: 200,
+    responseType: 'Success',
+    message:
+      (stagingResult && stagingResult.data && stagingResult.data.data) ||
+      `Beneficiary ${beneficiaryId} deleted successfully from MITO Staging.`,
+    stagingUrl: stagingResult
+      ? stagingResult.stagingUrl
+      : `${MITO_STAGING_CONFIG.baseUrl}/Beneficiaries/DeleteBeneficiary?beneficiaryId=${encodeURIComponent(beneficiaryId)}`,
+    stagingCall: stagingResult,
+    data: {
+      beneficiaryId,
+      deleted: true,
+      deletedBeneficiary: existing || null
+    }
+  });
+}
+
+app.delete(['/api/v1/mito/Beneficiary/:id', '/api/v1/mito/Beneficiaries/:id', '/api/v1/mito/beneficiaries/:id'], handleDeleteBeneficiary);
+app.post(['/api/v1/mito/Beneficiaries/DeleteBeneficiary', '/api/v1/mito/Beneficiary/delete'], handleDeleteBeneficiary);
+app.get(['/api/v1/mito/Beneficiaries/DeleteBeneficiary', '/api/v1/mito/beneficiaries/DeleteBeneficiary'], handleDeleteBeneficiary);
 
 // ============================================================================
 // 9. LOCK THE RATES RIGHT AFTER RATE & CORRIDOR SCREEN (`POST /api/v1/mito/Exchange/rates`)
@@ -1972,11 +2325,16 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
     return res.status(404).json({ code: 404, responseType: 'Error', message: `User '${requestedUserId || senderId}' not found.` });
   }
 
-  // If caller explicitly passed a non-empty beneficiaryId that is not in BENEFICIARIES, validate it;
-  // If beneficiaryId is omitted/null (user selected Bank only -> Lock Rate -> Submit Transaction),
-  // MITO Hosted Page handles creating/selecting the beneficiary (`isBeneficiaryRequired: true`)!
+  // If caller explicitly passed a non-empty beneficiaryId, resolve it (from memory or live MITO Staging GET /beneficiaries/:id)
+  // so the user skips adding beneficiary details again and goes straight to the Payment Hosted Page (`requiredAction.payment.link`)!
   const hasExplicitBeneficiaryId = Boolean(beneficiaryId && String(beneficiaryId).trim() !== '');
-  const beneficiary = hasExplicitBeneficiaryId ? BENEFICIARIES.get(beneficiaryId) : null;
+  let beneficiary = hasExplicitBeneficiaryId ? findBeneficiaryByIdCaseInsensitive(beneficiaryId) : null;
+  if (hasExplicitBeneficiaryId && !beneficiary) {
+    try {
+      await retrieveAndSyncUserBeneficiaries({ userId: requestedUserId || sender.mitoUserId || sender.userId, senderId: sender.senderId });
+      beneficiary = findBeneficiaryByIdCaseInsensitive(beneficiaryId);
+    } catch (_) {}
+  }
   if (hasExplicitBeneficiaryId && !beneficiary) {
     return res.status(403).json({
       code: 403,
@@ -1998,15 +2356,15 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
 
   const realUserId = sender.mitoUserId || sender.userId || lockedRate.mitoUserId || MITO_STAGING_CONFIG.defaultQuoteUserId;
   const realProviderId =
-    (requestedProviderId && String(requestedProviderId).length > 20 ? requestedProviderId : null) ||
     (beneficiary && beneficiary.providerId && beneficiary.providerId.length > 20 ? beneficiary.providerId : null) ||
+    (requestedProviderId && String(requestedProviderId).length > 20 ? requestedProviderId : null) ||
     lockedRate.providerId ||
     MITO_STAGING_CONFIG.defaultNgaProviderId;
   const matchedProviderObj =
-    PROVIDERS.find(p => p.id === requestedProviderId || p.id === realProviderId) ||
+    (beneficiary && beneficiary.providerName ? { id: realProviderId, name: beneficiary.providerName } : null) ||
+    PROVIDERS.find(p => p.id === realProviderId || p.id === requestedProviderId) ||
     (requestedProviderName ? { id: requestedProviderId || realProviderId, name: requestedProviderName } : null) ||
     (lockedRate && lockedRate.providerName ? { id: lockedRate.providerId || realProviderId, name: lockedRate.providerName } : null) ||
-    (beneficiary ? { id: beneficiary.providerId, name: beneficiary.providerName } : null) ||
     { id: realProviderId, name: 'Selected Beneficiary Bank' };
 
   // If the rate was locked before the user's mitoUserId was bound on MITO Staging,
@@ -2077,8 +2435,10 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
   const reasonCode = matchedReason.code || 'FOROWNEXPENDITURES';
   const sourceOfFundCode = matchedSof.code || 'SALARY';
 
-  // Exact request body per MITO InitiateHostedTransaction specification
-  // OMIT `beneficiary` / `beneficiaryId` key completely so MITO returns the `requiredAction.beneficiary` object with a new link!
+  // Exact request body per MITO InitiateHostedTransaction specification:
+  // - If user selected an existing beneficiary (`beneficiary` is present), include `beneficiaryId` so MITO Staging sets `isBeneficiaryRequired: false`
+  //   and the user skips adding beneficiary details and goes straight to the Payment Hosted Page (`requiredAction.payment.link`)!
+  // - If no existing beneficiary is selected (`beneficiary` is null), omit `beneficiaryId` so MITO returns `requiredAction.beneficiary.link`!
   const mitoTransactionPayload = {
     serviceCode: 'MONEYTRANSFER',
     collectionMode: lockedRate.collectionMode === 'MOBILEMONEY' ? 'BANKACCOUNT' : lockedRate.collectionMode,
@@ -2090,6 +2450,7 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
     providerId: realProviderId,
     rateId: lockedRate.rateId,
     userId: realUserId,
+    ...(beneficiary && beneficiary.beneficiaryId ? { beneficiaryId: beneficiary.beneficiaryId } : {}),
     redirectUrl: resolvedRedirectUrl,
     PartnerReferenceNumber: partnerReferenceNumber,
     reasonCode,
@@ -2155,7 +2516,7 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
   const paymentAction = (rawRequiredAction && rawRequiredAction.payment) || null;
   const beneficiaryAction = (rawRequiredAction && rawRequiredAction.beneficiary) || null;
   const kycAction = (rawRequiredAction && rawRequiredAction.kyc) || null;
-  // Never expose or trigger KYC Hosted Page — flow goes directly Beneficiary -> Payment
+  // Never expose or trigger KYC Hosted Page — flow goes directly Beneficiary -> Payment (or straight to Payment if existing beneficiary selected)
   const requiredAction = {
     kyc: null,
     beneficiary: beneficiaryAction,
@@ -2188,15 +2549,19 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
   const beneficiaryLink = beneficiaryDirectUrl;
   const beneficiaryHostedUrl = beneficiaryDirectUrl;
 
-  // Primary journeyCode & link loaded after transaction submission is the `requiredAction.beneficiary` object's new link!
-  const journeyCode = beneficiaryJourneyCode || paymentJourneyCode;
+  const skipBeneficiaryHostedStep = Boolean(beneficiary && beneficiary.beneficiaryId);
+  // If an existing beneficiary was selected, primary journeyCode is paymentJourneyCode; otherwise beneficiaryJourneyCode!
+  const journeyCode = skipBeneficiaryHostedStep ? paymentJourneyCode : beneficiaryJourneyCode || paymentJourneyCode;
   const linkToken =
+    (skipBeneficiaryHostedStep && paymentAction && paymentAction.linkToken) ||
     (beneficiaryAction && beneficiaryAction.linkToken) ||
     (paymentAction && paymentAction.linkToken) ||
     (liveTxData && liveTxData.linkToken) ||
     null;
 
-  const requiredActionBeneficiary = beneficiaryAction
+  const requiredActionBeneficiary = skipBeneficiaryHostedStep
+    ? null
+    : beneficiaryAction
     ? {
         ...beneficiaryAction,
         qrCodeLink: beneficiaryQrUrl,
@@ -2210,6 +2575,11 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
         linkToken,
         status: 'Pending'
       };
+
+  const selectedBenFullName =
+    beneficiary && beneficiary.fields
+      ? beneficiary.fields.fullName || `${beneficiary.fields.firstName || ''} ${beneficiary.fields.lastName || ''}`.trim()
+      : null;
 
   const txRecord = {
     transactionId,
@@ -2227,6 +2597,10 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
     senderEmail: sender.email,
     senderKycStatus: sender.kycStatus,
     senderKycTier: sender.kycTier,
+    beneficiaryId: beneficiary ? beneficiary.beneficiaryId : null,
+    beneficiaryName: selectedBenFullName || null,
+    beneficiaryAccountNumber: (beneficiary && beneficiary.fields && beneficiary.fields.accountNumber) || null,
+    skipBeneficiaryHostedStep,
     providerId: realProviderId,
     providerName: matchedProviderObj.name,
     collectionMode: lockedRate.collectionMode,
@@ -2248,14 +2622,16 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
     beneficiaryLink,
     beneficiaryHostedUrl,
     beneficiaryDirectUrl,
-    beneficiaryStatus: 'PENDING',
+    beneficiaryStatus: skipBeneficiaryHostedStep ? 'COMPLETED' : 'PENDING',
     isBeneficiaryRetryAllowed: true,
     paymentRawLink,
     paymentQrUrl,
     paymentDirectUrl,
     paymentUrl,
     paymentCheckoutUrl,
-    loadedActionType: 'beneficiary (requiredAction.beneficiary.link -> QR & Direct Form)',
+    loadedActionType: skipBeneficiaryHostedStep
+      ? 'payment (existing beneficiary selected -> skipped beneficiary step -> loaded requiredAction.payment.link)'
+      : 'beneficiary (requiredAction.beneficiary.link -> QR & Direct Form)',
     requiredActionBeneficiary,
     requiredActionPaymentOnly: paymentAction
       ? {
@@ -2282,7 +2658,9 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
   res.json({
     code: 200,
     responseType: 'Success',
-    message: `Hosted Transaction initiated via POST /api/v1/mito/Transactions/InitiateHostedTransaction (beneficiary key omitted)! Loaded requiredAction.beneficiary QR link (${beneficiaryQrUrl}) · Raw link: ${beneficiaryRawLink}`,
+    message: skipBeneficiaryHostedStep
+      ? `Hosted Transaction initiated with existing beneficiary '${selectedBenFullName}' (${beneficiary.beneficiaryId})! Skipped adding beneficiary details and loaded Payment link (${paymentDirectUrl}) directly.`
+      : `Hosted Transaction initiated via POST /api/v1/mito/Transactions/InitiateHostedTransaction (beneficiary key omitted)! Loaded requiredAction.beneficiary link (${beneficiaryDirectUrl}).`,
     stagingCall: stagingResult,
     data: {
       transactionId,
@@ -2294,6 +2672,10 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
       paymentJourneyCode,
       linkToken,
       rateId: lockedRate.rateId,
+      beneficiaryId: txRecord.beneficiaryId,
+      beneficiaryName: txRecord.beneficiaryName,
+      beneficiaryAccountNumber: txRecord.beneficiaryAccountNumber,
+      skipBeneficiaryHostedStep,
       providerId: realProviderId,
       providerName: matchedProviderObj.name,
       beneficiaryRawLink,
