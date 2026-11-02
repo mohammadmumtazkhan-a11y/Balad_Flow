@@ -604,24 +604,36 @@ async function loadDashboardProvidersAndTypes() {
     epBadge.textContent = `GET /api/v1/mito/Providers?receiveCountryIso3=${STATE.receiveCountryIso3}&serviceCode=MONEYTRANSFER&collectionMode=${STATE.collectionMode}`;
   }
 
-  // 1. Load Banks / Providers based on receive country & collection mode
+  // 1. Load Banks / Providers based on receive country & collection mode (DO NOT auto-select or hardcode a default bank — let the user select!)
   const provRes = await callApi(
     'GET',
     `/api/v1/mito/Providers?receiveCountryIso3=${encodeURIComponent(STATE.receiveCountryIso3)}&serviceCode=MONEYTRANSFER&collectionMode=${encodeURIComponent(STATE.collectionMode)}`
   );
   if (provRes.ok && Array.isArray(provRes.data?.data)) {
     STATE.providers = provRes.data.data;
-    const defaultProv =
-      STATE.providers.find(p => p.id === (STATE.selectedDroplists.dashProvider && STATE.selectedDroplists.dashProvider.id)) ||
-      STATE.providers[0] ||
-      null;
-    populateDownwardDroplist('dashProvider', STATE.providers, defaultProv);
-    populateDownwardDroplist('provider', STATE.providers, defaultProv);
+    const existingSelected =
+      STATE.selectedDroplists.dashProvider &&
+      STATE.providers.find(p => p.id === STATE.selectedDroplists.dashProvider.id)
+        ? STATE.providers.find(p => p.id === STATE.selectedDroplists.dashProvider.id)
+        : null;
+    populateDownwardDroplist('dashProvider', STATE.providers, existingSelected, true);
+    populateDownwardDroplist('provider', STATE.providers, existingSelected, true);
 
     const noteBank = document.getElementById('noteSelectedBank');
-    if (noteBank && defaultProv) noteBank.textContent = defaultProv.name;
+    if (noteBank) {
+      noteBank.textContent = existingSelected ? existingSelected.name : 'Select a bank below';
+    }
     const rlwProv = document.getElementById('rlwProviderVal');
-    if (rlwProv && defaultProv) rlwProv.textContent = defaultProv.name;
+    if (rlwProv) {
+      rlwProv.textContent = existingSelected ? existingSelected.name : 'Select a bank';
+    }
+    const pillEl = document.getElementById('dashLockedRateStatusPill');
+    if (pillEl && !existingSelected) {
+      pillEl.style.background = '#fefce8';
+      pillEl.style.color = '#854d0e';
+      pillEl.style.borderColor = '#fde047';
+      pillEl.innerHTML = `👆 Select a Beneficiary Bank below to lock rate (<strong>${STATE.providers.length}</strong> banks available)`;
+    }
   }
 
   // 2. Load Source of Funds & Transfer Reasons for InitiateHostedTransaction
@@ -824,7 +836,7 @@ async function fetchQuoteLive() {
     const selBankName =
       (STATE.selectedDroplists.dashProvider && STATE.selectedDroplists.dashProvider.name) ||
       (STATE.selectedDroplists.provider && STATE.selectedDroplists.provider.name) ||
-      'Zenith Bank International';
+      'Select a bank below';
     document.getElementById('corridorNotePill').innerHTML =
       `Corridor: <strong>${STATE.sendCurrency} → ${STATE.receiveCurrency} (${STATE.receiveCountryName})</strong> · Mode: <strong>${STATE.collectionMode}</strong> · Bank: <strong id="noteSelectedBank">${selBankName}</strong>`;
   }
@@ -862,13 +874,46 @@ async function lockExchangeRateAfterRateScreen() {
   const selectedProv =
     STATE.selectedDroplists.dashProvider ||
     STATE.selectedDroplists.provider ||
-    STATE.providers[0] ||
     null;
+
+  if (!selectedProv) {
+    const pillEl = document.getElementById('dashLockedRateStatusPill');
+    if (pillEl) {
+      pillEl.classList.remove('hidden');
+      pillEl.style.background = '#fee2e2';
+      pillEl.style.color = '#991b1b';
+      pillEl.style.borderColor = '#fca5a5';
+      pillEl.innerHTML =
+        `⚠️ <strong>Please select the Beneficiary Bank / Provider from the dropdown below first!</strong> Once you select a bank, we will lock the exchange rate for that bank.`;
+    }
+    const alertBanner = document.getElementById('dashAlertBanner');
+    const alertText = document.getElementById('dashAlertText');
+    if (alertBanner && alertText) {
+      alertBanner.style.background = '#fef2f2';
+      alertBanner.style.borderColor = '#fca5a5';
+      alertBanner.style.color = '#991b1b';
+      alertText.innerHTML =
+        `⚠️ <strong>Beneficiary Bank Not Selected:</strong> Please choose a <strong>Beneficiary Bank / Provider (<code>providerId</code>)</strong> from the dropdown below before locking the rate and submitting the transaction.`;
+    }
+    const dropWrap = document.getElementById('droplist-dashProvider');
+    if (dropWrap) {
+      dropWrap.classList.add('open');
+      dropWrap.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const searchInput = document.getElementById('droplistSearch-dashProvider');
+      if (searchInput) {
+        searchInput.value = '';
+        filterDownwardDroplist('dashProvider', '');
+        setTimeout(() => searchInput.focus(), 50);
+      }
+    }
+    return false;
+  }
 
   const rateRes = await callApi('POST', '/api/v1/mito/Exchange/rates', {
     senderId: STATE.senderId,
     beneficiaryId: STATE.beneficiaryId || null,
-    providerId: selectedProv ? selectedProv.id : null,
+    providerId: selectedProv.id,
+    providerName: selectedProv.name,
     sendCurrency: STATE.sendCurrency,
     receiveCurrency: STATE.receiveCurrency,
     receiveCountryIso3: STATE.receiveCountryIso3,
@@ -886,9 +931,12 @@ async function lockExchangeRateAfterRateScreen() {
     const pillEl = document.getElementById('dashLockedRateStatusPill');
     if (pillEl) {
       pillEl.classList.remove('hidden');
+      pillEl.style.background = '#dcfce7';
+      pillEl.style.color = '#14532d';
+      pillEl.style.borderColor = '#86efac';
       pillEl.innerHTML =
         `🔒 <strong>Rate Locked!</strong> <code>rateId: ${STATE.rateId}</code> · ` +
-        `Selected Bank: <strong>${selectedProv ? selectedProv.name : 'Zenith Bank International'}</strong> (<code>providerId: ${selectedProv ? selectedProv.id : STATE.lockedRate.providerId}</code>) · ` +
+        `Selected Bank: <strong>${selectedProv.name}</strong> (<code>providerId: ${selectedProv.id}</code>) · ` +
         `Rate: <strong>1 ${STATE.sendCurrency} = ${Number(STATE.lockedRate.exchangeRate).toLocaleString()} ${STATE.receiveCurrency}</strong> · Ready to Submit Transaction!`;
     }
 
@@ -1683,11 +1731,22 @@ function renderExtraCountryBeneficiaryFields() {
 // ============================================================================
 // CUSTOM SEARCHABLE DROPLIST ENGINE (ALWAYS OPENS DOWNWARDS!)
 // ============================================================================
-function populateDownwardDroplist(key, items, defaultItem) {
+function populateDownwardDroplist(key, items, defaultItem, allowUnselected = false) {
+  if (allowUnselected && !defaultItem) {
+    STATE.selectedDroplists[key] = null;
+    const labelEl = document.getElementById(`droplistSelected-${key}`);
+    if (labelEl) {
+      labelEl.textContent = `-- Select Beneficiary Bank / Provider (${items.length} available) --`;
+      labelEl.style.color = '#64748b';
+    }
+    renderDroplistOptions(key, items, '');
+    return;
+  }
   STATE.selectedDroplists[key] = defaultItem || items[0] || null;
   const labelEl = document.getElementById(`droplistSelected-${key}`);
   if (labelEl && STATE.selectedDroplists[key]) {
     labelEl.textContent = STATE.selectedDroplists[key].name;
+    labelEl.style.color = '';
   }
   renderDroplistOptions(key, items, '');
 }
@@ -1769,22 +1828,42 @@ function selectDownwardDroplistItem(key, itemId) {
   if (found) {
     STATE.selectedDroplists[key] = found;
     const labelEl = document.getElementById(`droplistSelected-${key}`);
-    if (labelEl) labelEl.textContent = found.name;
+    if (labelEl) {
+      labelEl.textContent = found.name;
+      labelEl.style.color = '';
+    }
 
     if (key === 'dashProvider') {
       STATE.selectedDroplists.provider = found;
       const benLabel = document.getElementById('droplistSelected-provider');
-      if (benLabel) benLabel.textContent = found.name;
+      if (benLabel) {
+        benLabel.textContent = found.name;
+        benLabel.style.color = '';
+      }
       const noteBankEl = document.getElementById('noteSelectedBank');
       if (noteBankEl) noteBankEl.textContent = found.name;
       const rlwProvEl = document.getElementById('rlwProviderVal');
       if (rlwProvEl) rlwProvEl.textContent = found.name;
+      // Restore green alert banner if previously warning about unselected bank
+      const alertBanner = document.getElementById('dashAlertBanner');
+      if (alertBanner) {
+        alertBanner.style.background = '';
+        alertBanner.style.borderColor = '';
+        alertBanner.style.color = '';
+      }
+      // Automatically lock rate for the user's newly selected bank!
+      lockExchangeRateAfterRateScreen();
     } else if (key === 'provider') {
       STATE.selectedDroplists.dashProvider = found;
       const dashLabel = document.getElementById('droplistSelected-dashProvider');
-      if (dashLabel) dashLabel.textContent = found.name;
+      if (dashLabel) {
+        dashLabel.textContent = found.name;
+        dashLabel.style.color = '';
+      }
       const noteBankEl = document.getElementById('noteSelectedBank');
       if (noteBankEl) noteBankEl.textContent = found.name;
+      const rlwProvEl = document.getElementById('rlwProviderVal');
+      if (rlwProvEl) rlwProvEl.textContent = found.name;
     } else if (key === 'dashSof') {
       STATE.selectedDroplists.sof = found;
     } else if (key === 'dashReason') {
@@ -2014,19 +2093,28 @@ async function handleConfirmSummaryAndInitiatePayment(options = {}) {
       STATE.beneficiaryId = null;
     }
 
-    // Use the rateId locked on Screen 2 (Corridors, Select Bank & Lock Rate); if not locked yet or expired, lock now
-    if (!STATE.rateId || !STATE.lockedRate || (STATE.rateRemainingSeconds || 0) <= 0) {
+    const selectedProvider =
+      STATE.selectedDroplists.dashProvider ||
+      STATE.selectedDroplists.provider ||
+      null;
+    if (!selectedProvider) {
+      await lockExchangeRateAfterRateScreen();
+      return;
+    }
+
+    // Use the rateId locked on Screen 2 for the selected bank; if not locked yet, expired, or locked for a different bank, lock now
+    if (
+      !STATE.rateId ||
+      !STATE.lockedRate ||
+      (STATE.rateRemainingSeconds || 0) <= 0 ||
+      STATE.lockedRate.providerId !== selectedProvider.id
+    ) {
       const lockedOk = await lockExchangeRateAfterRateScreen();
       if (!lockedOk) return;
     }
 
-    const selectedProvider =
-      STATE.selectedDroplists.dashProvider ||
-      STATE.selectedDroplists.provider ||
-      (STATE.providers && STATE.providers[0]) ||
-      null;
-    const providerId = selectedProvider ? selectedProvider.id : '';
-    const providerName = selectedProvider ? selectedProvider.name : 'Selected Recipient Bank';
+    const providerId = selectedProvider.id;
+    const providerName = selectedProvider.name;
 
     const customRedirectUrl =
       document.getElementById('sumRedirectUrlInput')?.value.trim() ||
@@ -2282,7 +2370,7 @@ async function handleBeneficiaryFailedShowFallback(isRetryAllowed = true, custom
   if (fbJc) fbJc.textContent = STATE.beneficiaryJourneyCode || STATE.journeyCode || 'JNY-...';
   const fbBank = document.getElementById('fallbackBankName');
   const selProv = STATE.selectedDroplists.dashProvider || STATE.selectedDroplists.provider;
-  if (fbBank) fbBank.textContent = selProv ? selProv.name : 'Zenith Bank International';
+  if (fbBank) fbBank.textContent = selProv ? selProv.name : 'Selected Beneficiary Bank';
   const fbAmt = document.getElementById('fallbackAmountSummary');
   if (fbAmt) {
     fbAmt.textContent = `${STATE.sendCurrency} ${Number(STATE.sendAmount).toFixed(2)} → ${STATE.receiveCurrency} ${Number(STATE.receiveAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -2334,7 +2422,7 @@ async function handleAbortTransactionAndReturnToDashboard() {
   const record = {
     transactionId: STATE.transactionId || `TXN-${Date.now()}`,
     beneficiaryName: (abortedTx && abortedTx.beneficiaryName) || 'Beneficiary Aborted',
-    providerName: (abortedTx && abortedTx.providerName) || (selProv ? selProv.name : 'Zenith Bank International'),
+    providerName: (abortedTx && abortedTx.providerName) || (selProv ? selProv.name : 'Selected Beneficiary Bank'),
     sendCurrency: STATE.sendCurrency,
     sendAmount: STATE.sendAmount,
     receiveCurrency: STATE.receiveCurrency,

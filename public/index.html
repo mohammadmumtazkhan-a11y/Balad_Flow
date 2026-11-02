@@ -106,7 +106,7 @@
       </div>
       <div class="rlw-row">
         <span>Selected Bank:</span>
-        <strong id="rlwProviderVal">Zenith Bank International</strong>
+        <strong id="rlwProviderVal">Select a bank</strong>
       </div>
       <div class="rlw-row">
         <span>Locked <code>rateId</code>:</span>
@@ -614,7 +614,7 @@
 
               <!-- Noted Corridor Indicator -->
               <div class="sunset-corridor-note" id="corridorNotePill">
-                Corridor: <strong>GBP → NGN (Nigeria)</strong> · Mode: <strong id="noteCollectionMode">BANKACCOUNT</strong> · Bank: <strong id="noteSelectedBank">Zenith Bank International</strong>
+                Corridor: <strong>GBP → NGN (Nigeria)</strong> · Mode: <strong id="noteCollectionMode">BANKACCOUNT</strong> · Bank: <strong id="noteSelectedBank">Select a bank below</strong>
               </div>
             </div>
           </div>
@@ -627,23 +627,23 @@
             <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
               <div>
                 <h4 class="olowo-section-subtitle" style="margin:0;color:#14532d;font-size:15px;">
-                  🏦 Select Recipient Bank / Provider (<code id="dashProviderEndpointBadge">GET /api/v1/mito/Providers?receiveCountryIso3=NGA&amp;collectionMode=BANKACCOUNT</code>)
+                  🏦 Select Beneficiary Bank / Provider (<code id="dashProviderEndpointBadge">GET /api/v1/mito/Providers?receiveCountryIso3=NGA&amp;collectionMode=BANKACCOUNT</code>)
                 </h4>
                 <div style="font-size:12px;color:#166534;margin-top:2px;">
-                  Select the destination bank/provider for <strong id="dashProviderCountryLabel">Nigeria (NGN)</strong>. We lock the rate for this bank and submit the transaction — <strong>MITO's Hosted Page will collect Beneficiary details &amp; any required info!</strong>
+                  Select the beneficiary bank/provider for <strong id="dashProviderCountryLabel">Nigeria (NGN)</strong>. Once you select a bank, we lock the rate for your chosen bank and submit the transaction — <strong>MITO's Hosted Page will collect Beneficiary details &amp; any required info!</strong>
                 </div>
               </div>
               <span class="mono-pill" id="dashLockedRateStatusPill" style="background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;">
-                Rate: Not locked yet
+                👆 Select a Beneficiary Bank below to lock rate
               </span>
             </div>
 
             <!-- Downward-Opening Searchable Bank / Provider Droplist -->
             <div class="olowo-field">
-              <label id="dashProviderLabel">Recipient Bank / Provider (<code>providerId</code>) <span class="req-star">*</span> <span class="api-tag">Searchable · Opens Downwards ↓</span></label>
+              <label id="dashProviderLabel">Beneficiary Bank / Provider (<code>providerId</code>) <span class="req-star">*</span> <span class="api-tag">Searchable · Opens Downwards ↓</span></label>
               <div class="downward-droplist" id="droplist-dashProvider">
                 <button type="button" class="droplist-trigger" onclick="toggleDownwardDroplist('dashProvider')">
-                  <span id="droplistSelected-dashProvider">Zenith Bank International</span>
+                  <span id="droplistSelected-dashProvider">-- Select Beneficiary Bank / Provider --</span>
                   <span class="droplist-chevron">⌄</span>
                 </button>
                 <div class="droplist-menu" id="droplistMenu-dashProvider">
@@ -1600,7 +1600,7 @@
         <div class="mito-api-status-strip mb-14" style="flex-direction:column;align-items:stretch;gap:8px;">
           <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
             <span class="api-badge-ok">✓ <code>POST /api/v1/mito/Transactions/InitiateHostedTransaction</code> (<code>beneficiary</code> key omitted · <strong id="stripTxId">TXN-...</strong> · Ref: <strong id="stripMitoRef">102321</strong>)</span>
-            <span class="api-badge-ok">✓ Bank: <strong id="stripProviderName">Zenith Bank International</strong> · Beneficiary Journey: <code id="stripJourneyCode">JNY-...</code> · Rate: <code id="stripRateId">RATE-...</code></span>
+            <span class="api-badge-ok">✓ Bank: <strong id="stripProviderName">Selected Beneficiary Bank</strong> · Beneficiary Journey: <code id="stripJourneyCode">JNY-...</code> · Rate: <code id="stripRateId">RATE-...</code></span>
           </div>
           <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;background:#f8fafc;padding:8px 12px;border-radius:8px;border:1px solid #cbd5e1;">
             <div style="font-size:12px;color:#1e293b;word-break:break-all;">
@@ -1681,7 +1681,7 @@
               <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;margin-bottom:18px;font-size:12.5px;color:#475569;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">
                 <div><strong>Transaction ID:</strong> <code id="fallbackTxId">TXN-...</code></div>
                 <div><strong>Beneficiary Journey:</strong> <code id="fallbackBenJourneyCode">JNY-...</code></div>
-                <div><strong>Selected Bank:</strong> <strong id="fallbackBankName">Zenith Bank International</strong></div>
+                <div><strong>Selected Bank:</strong> <strong id="fallbackBankName">Selected Beneficiary Bank</strong></div>
                 <div><strong>Amount:</strong> <strong id="fallbackAmountSummary">GBP 50.00 → NGN</strong></div>
               </div>
 
@@ -1852,7 +1852,7 @@
               <h4>Selected Bank &amp; Beneficiary</h4>
               <div class="sum-row"><span>Recipient</span><strong id="succBenName">Created in MITO Hosted Page</strong></div>
               <div class="sum-row"><span>Beneficiary ID</span><strong class="mono-pill" id="succBenId">MITO-HOSTED</strong></div>
-              <div class="sum-row"><span>Bank / Network</span><strong id="succBenBank">Zenith Bank International</strong></div>
+              <div class="sum-row"><span>Bank / Network</span><strong id="succBenBank">Selected Beneficiary Bank</strong></div>
               <div class="sum-row"><span>Collection Mode</span><strong id="succBenMode">BANKACCOUNT</strong></div>
             </div>
           </div>

@@ -1441,13 +1441,19 @@ app.get('/api/v1/mito/Providers', async (req, res) => {
     if (stagingResult.ok && stagingResult.data && Array.isArray(stagingResult.data.data) && stagingResult.data.data.length > 0) {
       liveProviders = stagingResult.data.data.map(p => ({
         id: p.providerId,
-        name: p.providerName,
+        name: String(p.providerName || '').trim(),
         code: p.providerCode,
         serviceCode,
         collectionMode,
         countryIso3: receiveCountryIso3,
         status: 'ACTIVE'
       }));
+      // Cache all live MITO Staging providers into PROVIDERS so rate lock & transaction lookup know every bank
+      liveProviders.forEach(lp => {
+        if (!PROVIDERS.some(existing => existing.id === lp.id)) {
+          PROVIDERS.push(lp);
+        }
+      });
     }
   } catch (_) {}
 
@@ -1648,7 +1654,8 @@ app.post('/api/v1/mito/Exchange/rates', async (req, res) => {
     sendAmount = 1000,
     serviceCode = 'MONEYTRANSFER',
     collectionMode = 'BANKACCOUNT',
-    providerId = null
+    providerId = null,
+    providerName = null
   } = req.body;
 
   const sender = (senderId && SENDERS.get(senderId)) || Array.from(SENDERS.values())[0];
@@ -1661,6 +1668,10 @@ app.post('/api/v1/mito/Exchange/rates', async (req, res) => {
     (providerId && providerId.length > 20 ? providerId : null) ||
     (beneficiary && beneficiary.providerId && beneficiary.providerId.length > 20 ? beneficiary.providerId : null) ||
     MITO_STAGING_CONFIG.defaultNgaProviderId;
+  const matchedProvider =
+    PROVIDERS.find(p => p.id === providerId || p.id === realProviderId) ||
+    (beneficiary ? { id: beneficiary.providerId, name: beneficiary.providerName } : null) ||
+    { id: providerId || realProviderId, name: providerName || 'Selected Beneficiary Bank' };
 
   const mitoRatePayload = {
     userId: realUserId,
@@ -1704,7 +1715,9 @@ app.post('/api/v1/mito/Exchange/rates', async (req, res) => {
     senderId: sender ? sender.senderId : senderId,
     mitoUserId: realUserId,
     beneficiaryId: beneficiary ? beneficiary.beneficiaryId : beneficiaryId,
-    providerId: realProviderId,
+    providerId: providerId || realProviderId,
+    stagingProviderId: realProviderId,
+    providerName: matchedProvider ? matchedProvider.name : (providerName || 'Selected Beneficiary Bank'),
     serviceCode,
     collectionMode,
     sendCountryIso3: corridor.sendCountryIso3 || 'GBR',
@@ -1797,9 +1810,11 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
     lockedRate.providerId ||
     MITO_STAGING_CONFIG.defaultNgaProviderId;
   const matchedProviderObj =
-    PROVIDERS.find(p => p.id === realProviderId || p.id === requestedProviderId) ||
+    PROVIDERS.find(p => p.id === requestedProviderId || p.id === realProviderId) ||
+    (requestedProviderName ? { id: requestedProviderId || realProviderId, name: requestedProviderName } : null) ||
+    (lockedRate && lockedRate.providerName ? { id: lockedRate.providerId || realProviderId, name: lockedRate.providerName } : null) ||
     (beneficiary ? { id: beneficiary.providerId, name: beneficiary.providerName } : null) ||
-    { id: realProviderId, name: requestedProviderName || 'Zenith Bank International' };
+    { id: realProviderId, name: 'Selected Beneficiary Bank' };
 
   // If the rate was locked before the user's mitoUserId was bound on MITO Staging,
   // bind a fresh rateId for that specific userId + providerId on MITO Staging so /Transactions/InitiateHostedTransaction matches
