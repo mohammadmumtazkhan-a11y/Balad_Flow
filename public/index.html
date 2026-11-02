@@ -44,13 +44,13 @@
   <!-- Discrete Top Flow Mode Switcher (Flow 1: New User vs Flow 2: Existing User) -->
   <div class="flow-helper-bar" id="flowHelperBar">
     <div class="flow-mode-switcher-row">
-      <span class="flow-helper-label">Select Flow:</span>
+      <span class="flow-helper-label">Flow:</span>
       <div class="flow-mode-btns-wrap">
         <button type="button" id="btnFlowModeNewUser" class="olowo-btn-green sm flow-mode-btn" onclick="switchHighLevelFlowMode('NEW_USER')">
-          🆕 Flow 1: New User (Register → Select Bank → Lock Rate → MITO Hosted Page)
+          🆕 New User (Register)
         </button>
         <button type="button" id="btnFlowModeExistingUser" class="olowo-btn-outline-green sm flow-mode-btn" onclick="switchHighLevelFlowMode('EXISTING_USER')">
-          🔁 Flow 2: Existing User (Log In → Select Bank → Lock Rate → MITO Hosted Page)
+          🔁 Existing User (Sign In)
         </button>
       </div>
     </div>
@@ -200,18 +200,18 @@
             <span class="c-yellow">o</span><span class="c-green">l</span><span class="c-green">o</span><span class="c-green">w</span><span class="c-red">o</span>
           </div>
           <div class="olowo-tagline">make money simple</div>
-          <p class="olowo-auth-subtitle">Create your account — Complete User / Sender Registration</p>
+          <p class="olowo-auth-subtitle">Create your account</p>
         </div>
 
         <div class="olowo-auth-card wide" style="max-width:740px;">
           <!-- Preset Test Senders Bar for Quick Testing -->
           <div class="olowo-preset-bar">
-            <span class="preset-label">Quick Fill Profile:</span>
+            <span class="preset-label">Quick Fill:</span>
             <button type="button" class="preset-chip active" onclick="fillRegistrationPreset('david_incomplete')">
-              David Beckham (New User — Full Sender Info Pre-filled)
+              David Beckham (New User)
             </button>
             <button type="button" class="preset-chip" onclick="fillRegistrationPreset('ahmed_complete')">
-              Ahmed Diallo (Existing Registered Sender)
+              Ahmed Diallo (Existing User)
             </button>
           </div>
 
@@ -220,31 +220,31 @@
             <input type="hidden" id="regFullName" value="David Beckham" />
 
             <h4 class="olowo-section-subtitle" style="margin:6px 0 10px;color:#14532d;border-bottom:1px solid #e2e8f0;padding-bottom:6px;">
-              1. Personal &amp; Account Details
+              1. Personal Details
             </h4>
 
             <div class="olowo-grid-3">
               <div class="olowo-field">
-                <label for="regFirstName">Legal First Name (<code>firstName</code>) <span class="req-star">*</span></label>
+                <label for="regFirstName">First Name <span class="req-star">*</span></label>
                 <input type="text" id="regFirstName" class="olowo-input blue-tint" value="David" oninput="syncRegFullNameFromParts()" required />
               </div>
               <div class="olowo-field">
-                <label for="regMiddleName">Middle Name (<code>middleName</code>)</label>
+                <label for="regMiddleName">Middle Name</label>
                 <input type="text" id="regMiddleName" class="olowo-input beige-fill" value="Robert" placeholder="Optional" />
               </div>
               <div class="olowo-field">
-                <label for="regLastName">Legal Last Name (<code>lastName</code>) <span class="req-star">*</span></label>
+                <label for="regLastName">Last Name <span class="req-star">*</span></label>
                 <input type="text" id="regLastName" class="olowo-input blue-tint" value="Beckham" oninput="syncRegFullNameFromParts()" required />
               </div>
             </div>
 
             <div class="olowo-grid-2">
               <div class="olowo-field">
-                <label for="regEmail">Email (<code>email</code>) <span class="req-star">*</span></label>
+                <label for="regEmail">Email <span class="req-star">*</span></label>
                 <input type="email" id="regEmail" class="olowo-input beige-fill" value="mohammadmumtazkhan+24@example.com" required />
               </div>
               <div class="olowo-field">
-                <label>Phone number (<code>phoneNumber</code>) <span class="req-star">*</span></label>
+                <label>Phone number <span class="req-star">*</span></label>
                 <div class="olowo-phone-grid">
                   <select id="regDialCode" class="olowo-input beige-fill">
                     <option value="+44" selected>+44 UK</option>
@@ -258,7 +258,7 @@
 
             <div class="olowo-grid-2">
               <div class="olowo-field">
-                <label for="regPassword">Password <span class="muted-hint">(min 10 chars)</span> <span class="req-star">*</span></label>
+                <label for="regPassword">Password <span class="req-star">*</span></label>
                 <div class="olowo-input-icon-wrap">
                   <input type="password" id="regPassword" class="olowo-input beige-fill" value="••••••••••••" required />
                   <span class="olowo-eye-icon">👁</span>
@@ -275,14 +275,14 @@
 
             <div class="olowo-grid-3">
               <div class="olowo-field">
-                <label for="regGender">Gender (<code>gender</code>) <span class="req-star">*</span></label>
+                <label for="regGender">Gender <span class="req-star">*</span></label>
                 <select id="regGender" class="olowo-input beige-fill">
-                  <option value="M" selected>M — Male</option>
-                  <option value="F">F — Female</option>
+                  <option value="M" selected>Male</option>
+                  <option value="F">Female</option>
                 </select>
               </div>
               <div class="olowo-field">
-                <label for="regDob">Date of Birth (<code>dateOfBirth</code>) <span class="req-star">*</span></label>
+                <label for="regDob">Date of Birth <span class="req-star">*</span></label>
                 <input type="date" id="regDob" class="olowo-input beige-fill" value="1975-05-02" required />
               </div>
               <div class="olowo-field">
@@ -295,69 +295,69 @@
             </div>
 
             <div class="olowo-field">
-              <label for="regEntityType">Legal Entity Type (<code>legalEntityType</code>: I or B) <span class="req-star">*</span></label>
+              <label for="regEntityType">Account Type <span class="req-star">*</span></label>
               <select id="regEntityType" class="olowo-input beige-fill" onchange="document.getElementById('regBusinessEntityRow').classList.toggle('hidden', this.value !== 'B');">
-                <option value="I" selected>I — Individual</option>
-                <option value="B">B — Business</option>
+                <option value="I" selected>Individual</option>
+                <option value="B">Business</option>
               </select>
             </div>
 
             <div id="regBusinessEntityRow" class="olowo-grid-2 hidden">
               <div class="olowo-field">
-                <label for="regCompanyNumber">Company Number (<code>companyNumber</code>) <span class="req-star">*</span></label>
+                <label for="regCompanyNumber">Company Number <span class="req-star">*</span></label>
                 <input type="text" id="regCompanyNumber" class="olowo-input beige-fill" placeholder="e.g. 12345678" />
               </div>
               <div class="olowo-field">
-                <label for="regBusinessName">Business Name (<code>businessName</code>) <span class="req-star">*</span></label>
+                <label for="regBusinessName">Business Name <span class="req-star">*</span></label>
                 <input type="text" id="regBusinessName" class="olowo-input beige-fill" placeholder="e.g. Olowo Ventures Ltd" />
               </div>
             </div>
 
             <h4 class="olowo-section-subtitle" style="margin:16px 0 10px;color:#14532d;border-bottom:1px solid #e2e8f0;padding-bottom:6px;">
-              2. Residential Address &amp; Country Details (Submitted to <code>POST /api/v1/mito/Users</code>)
+              2. Residential Address
             </h4>
 
             <div class="olowo-grid-2">
               <div class="olowo-field">
-                <label for="regBuildingNumber">Building Number (<code>buildingNumber</code>)</label>
+                <label for="regBuildingNumber">Building Number</label>
                 <input type="text" id="regBuildingNumber" class="olowo-input beige-fill" value="23" placeholder="e.g. 23" />
               </div>
               <div class="olowo-field">
-                <label for="regSubStreet">Building Name / Sub-street (<code>subStreet</code>)</label>
-                <input type="text" id="regSubStreet" class="olowo-input beige-fill" placeholder="Optional apartment / suite" />
+                <label for="regSubStreet">Apartment / Suite</label>
+                <input type="text" id="regSubStreet" class="olowo-input beige-fill" placeholder="Optional" />
               </div>
             </div>
 
             <div class="olowo-field">
-              <label for="regStreet">Street Address (<code>street</code>) <span class="req-star">*</span></label>
+              <label for="regStreet">Street Address <span class="req-star">*</span></label>
               <input type="text" id="regStreet" class="olowo-input blue-tint" value="Holland Park" placeholder="Enter street address..." required />
             </div>
 
             <div class="olowo-grid-2">
               <div class="olowo-field">
-                <label for="regCity">City (<code>addressCity</code>) <span class="req-star">*</span></label>
+                <label for="regCity">City <span class="req-star">*</span></label>
                 <input type="text" id="regCity" class="olowo-input beige-fill" value="London" placeholder="Enter city" required />
               </div>
               <div class="olowo-field">
-                <label for="regPostcode">Postcode / Zip-code (<code>addressPostcode</code>) <span class="req-star">*</span></label>
+                <label for="regPostcode">Postcode <span class="req-star">*</span></label>
                 <input type="text" id="regPostcode" class="olowo-input beige-fill" value="W11 3TD" placeholder="Enter postcode" required />
               </div>
             </div>
 
             <div class="olowo-grid-2">
               <div class="olowo-field">
-                <label for="regCountryIso3">Residence Country ISO3 (<code>countryIso3</code> / <code>addressCountryIso3</code>) <span class="req-star">*</span></label>
+                <label for="regCountryIso3">Country of Residence <span class="req-star">*</span></label>
                 <select id="regCountryIso3" class="olowo-input beige-fill">
-                  <option value="GBR" selected>GBR — United Kingdom</option>
-                  <option value="FRA">FRA — France</option>
+                  <option value="GBR" selected>United Kingdom</option>
+                  <option value="FRA">France</option>
                 </select>
               </div>
               <div class="olowo-field">
-                <label for="regBirthCountryIso3">Birth Country ISO3 (<code>birthCountryIso3</code>) <span class="req-star">*</span></label>
+                <label for="regBirthCountryIso3">Country of Birth <span class="req-star">*</span></label>
                 <select id="regBirthCountryIso3" class="olowo-input beige-fill">
-                  <option value="GBR" selected>GBR — United Kingdom</option>
-                  <option value="NGA">NGA — Nigeria</option>
-                  <option value="FRA">FRA — France</option>
+                  <option value="GBR" selected>United Kingdom</option>
+                  <option value="NGA">Nigeria</option>
+                  <option value="FRA">France</option>
                 </select>
               </div>
             </div>
@@ -365,7 +365,7 @@
             <div class="olowo-reg-actions-row" style="margin-top:16px;">
               <a href="#login" class="olowo-already-link" onclick="switchAuthMode('login'); return false;">Already have an account?</a>
               <button type="submit" class="olowo-btn-green px-create" id="btnRegisterCreate">
-                Register User &amp; Continue to Rates →
+                Create Account →
               </button>
             </div>
           </form>
@@ -457,23 +457,14 @@
             <a href="#transactionsSection" class="olowo-transactions-link">Transactions &nbsp;›</a>
           </div>
 
-          <!-- API Endpoint Banner for Step 2: Get Corridors + Affiliate Commercial Rates (using dynamic userId) + Get Providers (Banks) -->
-          <div class="mito-api-status-strip mb-14" style="flex-direction:column;align-items:stretch;gap:6px;">
-            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
-              <span class="api-badge-ok">📡 1. Corridors: <code>GET /api/v1/mito/Exchange/corridors</code></span>
-              <span class="api-badge-ok">📡 2. Rates: <code id="affiliateRatesBadgeCode">GET /api/v1/mito/Exchange/affiliateRates?userId=&lt;userId&gt;</code></span>
-              <span class="api-badge-ok">📡 3. Banks: <code>GET /api/v1/mito/Providers</code></span>
-              <span class="api-badge-url" id="corridorsDiscoveredBadge">55 Active Corridors Discovered</span>
-            </div>
-            <div class="api-telemetry-codebox" style="font-family:'JetBrains Mono',monospace;font-size:11px;background:#0f172a;color:#e2e8f0;padding:9px 12px;border-radius:8px;line-height:1.45;">
-              <div style="color:#4ade80;font-weight:700;" id="affiliateRateEndpointTitle">GET /api/v1/mito/Exchange/affiliateRates?userId=&lt;dynamic-userId&gt;&amp;FromCountry=GBR&amp;ToCountry=NGA&amp;FromCurrency=GBP&amp;ToCurrency=NGN</div>
-              <div style="color:#94a3b8;">Flow: Get Corridors &amp; Rates (using dynamic <code>userId</code> from Step 1 — never hardcoded) → Select Bank (<code>GET /Providers</code> for receive country/currency) → Lock Rate (<code>POST /Exchange/rates</code>) → Submit Transaction (<code>POST /Transactions/InitiateHostedTransaction</code>)</div>
-              <div style="color:#fde047;margin-top:3px;" id="affiliateRateResponsePreview">
-                Dynamic <code>userId</code> (not hardcoded): <strong>Assigned on Step 1</strong> · <code>rateMoneyTransfer</code> (Customer rate): <strong>1831.01</strong> · <code>partnerRateMoneyTransfer</code> (Partner rate): <strong>1831.01</strong> · <code>rateExpiry</code>: <strong>Live</strong>
-              </div>
-              <div style="color:#93c5fd;margin-top:3px;" id="corridorsResponsePreview">
-                Active Corridors: <code>GBP→NGN (GBR→NGA)</code>, <code>EUR→XOF (FRA→SEN)</code>, <code>EUR→XOF (FRA→MLI)</code>, <code>GBP→KES (GBR→KEN)</code>
-              </div>
+          <!-- Concise Dynamic User ID Rates Badge -->
+          <div class="mito-api-status-strip mb-14" style="align-items:center;gap:6px;">
+            <span class="api-badge-ok">📡 Rates: <code id="affiliateRatesBadgeCode">GET /api/v1/mito/Exchange/affiliateRates?userId=&lt;userId&gt;</code></span>
+            <span class="hidden" id="corridorsDiscoveredBadge"></span>
+            <div class="hidden">
+              <div id="affiliateRateEndpointTitle"></div>
+              <div id="affiliateRateResponsePreview"></div>
+              <div id="corridorsResponsePreview"></div>
             </div>
           </div>
 
@@ -590,22 +581,16 @@
           <div class="olowo-subcard mt-16" style="background:#ffffff;border:2px solid #86efac;border-radius:16px;padding:18px 20px;box-shadow:0 6px 20px rgba(21,128,61,0.06);">
             <!-- Existing Beneficiaries Quick-Select, Update Bank & Delete Panel -->
             <div id="dashExistingBeneficiariesPanel" style="background:#f8fafc;border:1.5px solid #cbd5e1;border-radius:12px;padding:14px 16px;margin-bottom:16px;">
-              <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
-                <div>
-                  <h4 style="margin:0;color:#14532d;font-size:14.5px;display:flex;align-items:center;flex-wrap:wrap;gap:6px;">
-                    <span>👤 Select Existing Beneficiary (Skip Adding Details) or Manage Beneficiaries</span>
-                    <code class="endpoint-code-chip">GET /api/v1/mito/Beneficiary</code>
-                  </h4>
-                  <div style="font-size:12px;color:#334155;margin-top:3px;line-height:1.45;">
-                    Select an existing beneficiary below so you don't have to add their details again (goes <strong>straight to Payment</strong>), change their bank via <code>POST /Beneficiaries/UpdateBeneficiary</code>, or delete via <code>GET /Beneficiaries/DeleteBeneficiary</code>.
-                  </div>
-                </div>
+              <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+                <h4 style="margin:0;color:#14532d;font-size:15px;">
+                  👤 Saved Beneficiaries
+                </h4>
                 <div style="display:flex;gap:6px;flex-wrap:wrap;">
-                  <button type="button" id="btnClearSelectedBeneficiary" class="olowo-btn-outline-green sm hidden" onclick="clearSelectedDashboardBeneficiary()" style="background:#fff;padding:5px 10px;font-size:11.5px;">
-                    ➕ Add New Beneficiary on MITO Hosted Page Instead
+                  <button type="button" id="btnClearSelectedBeneficiary" class="olowo-btn-outline-green sm hidden" onclick="clearSelectedDashboardBeneficiary()">
+                    ➕ New Beneficiary
                   </button>
-                  <button type="button" class="olowo-btn-outline-green sm" onclick="retrieveAddedBeneficiariesAfterPayment()" style="background:#fff;padding:5px 10px;font-size:11.5px;">
-                    🔄 Refresh Beneficiaries
+                  <button type="button" class="olowo-btn-outline-green sm" onclick="retrieveAddedBeneficiariesAfterPayment()">
+                    🔄 Refresh
                   </button>
                 </div>
               </div>
@@ -613,38 +598,33 @@
               <!-- Active Selected Beneficiary Banner -->
               <div id="dashSelectedBeneficiaryBanner" class="hidden" style="background:#dcfce7;border:1.5px solid #22c55e;border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:12.5px;color:#14532d;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
                 <div id="dashSelectedBeneficiaryBannerText"></div>
-                <button type="button" class="olowo-btn-outline-green sm" onclick="clearSelectedDashboardBeneficiary()" style="background:#ffffff;padding:4px 10px;font-size:11.5px;">
-                  ✕ Deselect (Add New Instead)
+                <button type="button" class="olowo-btn-outline-green sm" onclick="clearSelectedDashboardBeneficiary()">
+                  ✕ Deselect
                 </button>
               </div>
 
               <!-- Cards List for Selecting, Updating Bank, or Deleting Existing Beneficiaries -->
               <div id="dashQuickBeneficiariesList" style="display:flex;flex-direction:column;gap:8px;">
-                <div class="no-transfers-empty" style="padding:10px;font-size:12px;">Loading existing beneficiaries from MITO Staging...</div>
+                <div class="no-transfers-empty" style="padding:10px;font-size:12px;">Loading saved beneficiaries...</div>
               </div>
             </div>
 
-            <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;">
-              <div>
-                <h4 class="olowo-section-subtitle" style="margin:0;color:#14532d;font-size:15.5px;display:flex;align-items:center;flex-wrap:wrap;gap:6px;">
-                  <span>🏦 Select Beneficiary Bank / Provider</span>
-                  <code id="dashProviderEndpointBadge" class="endpoint-code-chip">GET /api/v1/mito/Providers?receiveCountryIso3=NGA&amp;collectionMode=BANKACCOUNT</code>
-                </h4>
-                <div style="font-size:12.5px;color:#166534;margin-top:4px;line-height:1.45;">
-                  Select the beneficiary bank/provider for <strong id="dashProviderCountryLabel">Nigeria (NGN)</strong>. Selecting an existing beneficiary above automatically maps their Bank &amp; <code>providerId</code>, or select a bank below to add a new beneficiary on MITO's Hosted Page!
-                </div>
-              </div>
+            <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;">
+              <h4 class="olowo-section-subtitle" style="margin:0;color:#14532d;font-size:15px;">
+                🏦 Recipient Bank (<span id="dashProviderCountryLabel">Nigeria</span>)
+                <code id="dashProviderEndpointBadge" class="hidden"></code>
+              </h4>
               <div class="mono-pill dash-rate-status-banner" id="dashLockedRateStatusPill" style="background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;">
-                👆 Select an Existing Beneficiary or a Beneficiary Bank below to lock rate
+                👆 Select a beneficiary or recipient bank to lock rate
               </div>
             </div>
 
             <!-- Downward-Opening Searchable Bank / Provider Droplist -->
             <div class="olowo-field">
-              <label id="dashProviderLabel">Beneficiary Bank / Provider (<code>providerId</code>) <span class="req-star">*</span> <span class="api-tag">Searchable · Opens Downwards ↓</span></label>
+              <label id="dashProviderLabel">Recipient Bank / Provider <span class="req-star">*</span></label>
               <div class="downward-droplist" id="droplist-dashProvider">
                 <button type="button" class="droplist-trigger" onclick="toggleDownwardDroplist('dashProvider')">
-                  <span id="droplistSelected-dashProvider">-- Select Beneficiary Bank / Provider --</span>
+                  <span id="droplistSelected-dashProvider">-- Select Recipient Bank --</span>
                   <span class="droplist-chevron">⌄</span>
                 </button>
                 <div class="droplist-menu" id="droplistMenu-dashProvider">
@@ -662,10 +642,10 @@
               </div>
             </div>
 
-            <!-- Source of Funds, Transfer Reason & Payment Narration (Required by POST /Transactions/InitiateHostedTransaction) -->
+            <!-- Source of Funds, Transfer Reason & Payment Narration -->
             <div class="olowo-grid-2 mt-12">
               <div class="olowo-field">
-                <label>Source of funds (<code>sourceOfFundCode</code>) <span class="req-star">*</span> <span class="api-tag">↓</span></label>
+                <label>Source of funds <span class="req-star">*</span></label>
                 <div class="downward-droplist" id="droplist-dashSof">
                   <button type="button" class="droplist-trigger" onclick="toggleDownwardDroplist('dashSof')">
                     <span id="droplistSelected-dashSof">Salary</span>
@@ -687,7 +667,7 @@
               </div>
 
               <div class="olowo-field">
-                <label>Transfer reason (<code>reasonCode</code>) <span class="req-star">*</span> <span class="api-tag">↓</span></label>
+                <label>Transfer reason <span class="req-star">*</span></label>
                 <div class="downward-droplist" id="droplist-dashReason">
                   <button type="button" class="droplist-trigger" onclick="toggleDownwardDroplist('dashReason')">
                     <span id="droplistSelected-dashReason">For Own Expenditures</span>
@@ -710,7 +690,7 @@
             </div>
 
             <div class="olowo-field mt-10">
-              <label for="dashPaymentNarration">Payment Narration (<code>paymentNarration</code>) <span class="req-star">*</span></label>
+              <label for="dashPaymentNarration">Payment Reference <span class="req-star">*</span></label>
               <input
                 type="text"
                 id="dashPaymentNarration"
@@ -720,7 +700,7 @@
               />
             </div>
 
-            <!-- Action Buttons: 1. Lock Rate Only (Optional Preview) | 2. Lock Rate & Submit Transaction (Primary CTA) -->
+            <!-- Action Buttons -->
             <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px;">
               <button
                 type="button"
@@ -729,7 +709,7 @@
                 style="padding:13px 18px;font-weight:700;"
                 onclick="handleLockRateOnlyOnDashboard()"
               >
-                🔒 Lock Rate (<code>POST /Exchange/rates</code>)
+                🔒 Lock Rate
               </button>
               <button
                 type="button"
@@ -738,7 +718,7 @@
                 style="padding:14px 20px;font-size:15.5px;font-weight:800;"
                 onclick="handleContinueToCheckout()"
               >
-                🚀 Lock Rate &amp; Submit Transaction (Open MITO Hosted Page) →
+                🚀 Continue to Payment →
               </button>
             </div>
           </div>
@@ -748,19 +728,16 @@
             A registered Payment Institution in the UK with registration nos. FRN: 815146 &amp; MLR NO: 12803115.
           </div>
 
-          <!-- RETRIEVED ADDED BENEFICIARIES SECTION (Populated via GET /api/v1/mito/Beneficiary after successful payment) -->
+          <!-- RETRIEVED ADDED BENEFICIARIES SECTION -->
           <div id="dashboardBeneficiariesSection" class="olowo-transactions-section">
             <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px;">
-              <h3 style="margin:0;display:flex;align-items:center;flex-wrap:wrap;gap:8px;">
-                <span>Added Beneficiaries</span>
-                <code class="endpoint-code-chip" style="font-size:11.5px;font-weight:700;">GET /api/v1/mito/Beneficiary</code>
-              </h3>
+              <h3 style="margin:0;">Added Beneficiaries</h3>
               <button type="button" class="olowo-btn-outline-green sm" onclick="retrieveAddedBeneficiariesAfterPayment()">
-                🔄 Retrieve Added Beneficiaries
+                🔄 Refresh
               </button>
             </div>
             <div id="dashboardBeneficiariesListBox" class="olowo-transactions-box" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
-              <div class="no-transfers-empty">No beneficiaries retrieved yet. Complete a payment to automatically retrieve added beneficiaries from MITO.</div>
+              <div class="no-transfers-empty">No beneficiaries retrieved yet.</div>
             </div>
           </div>
 
@@ -1607,67 +1584,64 @@
       <div class="olowo-fullscreen-page">
         <div class="fullscreen-topbar">
           <div style="display:flex;align-items:center;gap:8px;">
-            <button type="button" class="olowo-btn-back-sm" onclick="jumpToView('dashboard')">← Back to Corridors, Bank &amp; Rate Lock</button>
+            <button type="button" class="olowo-btn-back-sm" onclick="jumpToView('dashboard')">← Back to Dashboard</button>
           </div>
-          <div class="fullscreen-step-badge" id="payTopStepBadge">Step 3 · MITO Hosted Page (Continues Flow: Create Beneficiary &amp; Complete Payment)</div>
-          <div class="corridor-chip-sm" id="payRateIdBadge">RATE-...</div>
+          <div class="fullscreen-step-badge" id="payTopStepBadge">Step 3 · MITO Checkout</div>
+          <div class="corridor-chip-sm hidden" id="payRateIdBadge">RATE-...</div>
         </div>
 
-        <!-- API Lock & Hosted Transaction Strip -->
+        <!-- Concise Hosted Transaction Controls -->
         <div class="mito-api-status-strip mb-14" style="flex-direction:column;align-items:stretch;gap:8px;">
-          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
-            <span class="api-badge-ok">✓ <code>POST /api/v1/mito/Transactions/InitiateHostedTransaction</code> (<code>beneficiary</code> key omitted · <strong id="stripTxId">TXN-...</strong> · Ref: <strong id="stripMitoRef">102321</strong>)</span>
-            <span class="api-badge-ok">✓ Bank: <strong id="stripProviderName">Selected Beneficiary Bank</strong> · Beneficiary Journey: <code id="stripJourneyCode">JNY-...</code> · Rate: <code id="stripRateId">RATE-...</code></span>
-          </div>
-          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;background:#f8fafc;padding:8px 12px;border-radius:8px;border:1px solid #cbd5e1;">
-            <div style="font-size:12px;color:#1e293b;word-break:break-all;">
-              <div><strong>Stage 3A — Beneficiary Hosted Link (<code>requiredAction.beneficiary.link</code>):</strong> <a id="stripBeneficiaryUrlLink" href="https://mito-checkout-1cca8e18297e.herokuapp.com" target="_blank" rel="noopener" style="color:#15803d;font-weight:700;text-decoration:underline;"><code id="stripBeneficiaryHostedUrl">https://mito-checkout-1cca8e18297e.herokuapp.com?journeyCode=JNY-...</code></a></div>
-              <div style="margin-top:4px;"><strong>Stage 3B — Payment Hosted Link (<code>requiredAction.payment.link</code>):</strong> <a id="stripPaymentUrlLink" href="https://mito-checkout-1cca8e18297e.herokuapp.com" target="_blank" rel="noopener" style="color:#2563eb;font-weight:600;text-decoration:underline;"><code id="stripPaymentUrl">https://mito-checkout-1cca8e18297e.herokuapp.com?journeyCode=JNY-...</code></a></div>
-              <div style="margin-top:4px;color:#475569;"><strong>Return Redirect URL (<code>redirectUrl</code>):</strong> <code id="stripRedirectUrl">http://localhost:3000/remittances/callback</code></div>
-            </div>
-            <a id="btnOpenLiveMitoPaymentLink" href="https://mito-checkout-1cca8e18297e.herokuapp.com" target="_blank" rel="noopener" class="olowo-btn-green sm" style="text-decoration:none;white-space:nowrap;">
-              🔗 Open Active MITO Hosted Link ↗
-            </a>
+          <div class="hidden">
+            <strong id="stripTxId"></strong>
+            <strong id="stripMitoRef"></strong>
+            <strong id="stripProviderName"></strong>
+            <code id="stripJourneyCode"></code>
+            <code id="stripRateId"></code>
+            <a id="stripBeneficiaryUrlLink" href="https://mito-checkout-1cca8e18297e.herokuapp.com"><code id="stripBeneficiaryHostedUrl"></code></a>
+            <a id="stripPaymentUrlLink" href="https://mito-checkout-1cca8e18297e.herokuapp.com"><code id="stripPaymentUrl"></code></a>
+            <code id="stripRedirectUrl"></code>
+            <a id="btnOpenLiveMitoPaymentLink" href="https://mito-checkout-1cca8e18297e.herokuapp.com"></a>
           </div>
 
           <!-- Beneficiary -> Payment Progression & Fallback Controls Bar -->
           <div id="beneficiaryStageControlBar" class="mito-redirect-sim-bar" style="margin-top:2px;flex-wrap:wrap;gap:6px;background:#eff6ff;border:1px solid #bfdbfe;padding:8px 12px;border-radius:8px;">
             <span id="beneficiaryStageStatusBadge" style="font-weight:700;color:#1e40af;">
-              ⏳ Stage 3A Active: Waiting for Beneficiary Completion (Auto-polling MITO Journey Status...)
+              ⏳ Waiting for Beneficiary Completion...
             </span>
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-left:auto;">
               <button type="button" class="olowo-btn-green sm" onclick="handleBeneficiaryCompletedLoadPaymentLink()">
-                ✅ Beneficiary Completed → Load Payment Link
+                ✅ Beneficiary Completed → Payment
               </button>
               <button type="button" class="olowo-btn-amber sm" onclick="handleBeneficiaryFailedShowFallback(true)">
-                ⚠️ Beneficiary Failed (Retry Allowed)
+                ⚠️ Failed (Retry Allowed)
               </button>
               <button type="button" class="olowo-btn-red sm" onclick="handleBeneficiaryFailedShowFallback(false)">
-                ❌ Beneficiary Failed (Retry Not Allowed)
+                ❌ Failed (No Retry)
               </button>
             </div>
           </div>
 
-          <!-- Quick Redirect URL Callback Bar (Tests all 6 MITO Redirect URL payment cases on GET /remittances/callback!) -->
+          <!-- Quick Redirect URL Callback Bar -->
           <div class="mito-redirect-sim-bar" style="margin-top:2px;flex-wrap:wrap;gap:6px;">
-            <span>Redirect URL Payment Cases (<code>GET /remittances/callback</code>):</span>
+            <span>Simulate Payment Result:</span>
             <button type="button" class="olowo-btn-green sm" onclick="completePaymentAndRedirect('READYTOPROCESS')">
-              ✅ <code>orderStatus=READYTOPROCESS</code> (Success)
+              ✅ Paid (Success)
             </button>
             <button type="button" class="olowo-btn-amber sm" onclick="completePaymentAndRedirect('AWAITINGPAYMENT')">
-              🏦 <code>orderStatus=AWAITINGPAYMENT</code> (Bank Transfer)
+              🏦 Bank Transfer
             </button>
             <button type="button" class="olowo-btn-amber sm" onclick="completePaymentAndRedirect('INREVIEW')">
-              ⏳ <code>orderStatus=INREVIEW</code> (In Process)
+              ⏳ In Process
             </button>
             <button type="button" class="olowo-btn-red sm" onclick="completePaymentAndRedirect('CANCELLED')">
-              🚫 <code>orderStatus=CANCELLED</code> (Cancelled)
+              🚫 Cancelled
             </button>
             <button type="button" class="olowo-btn-red sm" onclick="completePaymentAndRedirect('EXPIRED')">
-              ⌛ <code>orderStatus=EXPIRED</code> (Expired)
+              ⌛ Expired
             </button>
             <button type="button" class="olowo-btn-red sm" onclick="completePaymentAndRedirect('FAILED')">
-              ❌ <code>orderStatus=FAILED</code> (Failed)
+              ❌ Failed
             </button>
           </div>
         </div>

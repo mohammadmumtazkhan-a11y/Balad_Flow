@@ -3460,14 +3460,12 @@ function buildInteractiveBeneficiaryCardsHtml(list, contextPrefix = 'dash') {
               <strong class="ben-card-name">👤 ${bName}</strong>
               ${
                 isSelected
-                  ? `<span class="tx-status-tag SUCCESS" style="background:#16a34a;color:#fff;white-space:normal;">✅ Selected for Transfer (Skips Adding Details)</span>`
-                  : `<span class="tx-status-tag SUCCESS" style="white-space:normal;">✓ Retrieved Beneficiary</span>`
+                  ? `<span class="tx-status-tag SUCCESS" style="background:#16a34a;color:#fff;white-space:normal;">✅ Selected</span>`
+                  : `<span class="tx-status-tag SUCCESS" style="white-space:normal;">✓ Saved</span>`
               }
             </div>
-            <div class="mono-pill ben-uuid-pill">${bId}</div>
             <div class="ben-card-bank-summary">
-              🏦 <strong>${bankName}</strong> · Account: <code>•••• ${acc.slice(-4)}</code> · ${b.collectionMode || 'BANKACCOUNT'} · ${b.receiveCountryIso3 || 'NGA'} (${b.receiveCurrency || 'NGN'})<br/>
-              <span style="font-size:11.5px;color:#475569;">Mapped <code>providerId</code>: <code>${provId}</code></span>
+              🏦 <strong>${bankName}</strong> · Account: <code>•••• ${acc.slice(-4)}</code>
             </div>
           </div>
 
@@ -3477,27 +3475,25 @@ function buildInteractiveBeneficiaryCardsHtml(list, contextPrefix = 'dash') {
               class="${isSelected ? 'olowo-btn-outline-green' : 'olowo-btn-green'} sm ben-select-btn"
               onclick="${isSelected ? 'clearSelectedDashboardBeneficiary()' : `selectExistingDashboardBeneficiary('${bId}')`}"
             >
-              ${isSelected ? '✕ Deselect Beneficiary' : '✓ Select Beneficiary (Skip Adding Details)'}
+              ${isSelected ? '✕ Deselect' : '✓ Select Beneficiary'}
             </button>
             <button
               type="button"
               class="olowo-btn-danger-outline ben-delete-btn"
               onclick="deleteBeneficiaryOnMito('${bId}')"
-              title="Delete Beneficiary via GET /api/v1/mito/Beneficiaries/DeleteBeneficiary"
+              title="Delete Beneficiary"
             >
               🗑️ Delete
             </button>
           </div>
 
-          <!-- Update Bank / Provider ID Row (POST /api/v1/mito/Beneficiaries/UpdateBeneficiary) -->
+          <!-- Update Bank Row -->
           <div class="ben-card-bank-row">
-            <label for="${selectDomId}" class="ben-card-bank-label">
-              🏦 Change Bank (<code>POST /Beneficiaries/UpdateBeneficiary</code>):
-            </label>
             <div class="ben-card-bank-controls">
               <select
                 id="${selectDomId}"
                 class="olowo-input ben-card-bank-select"
+                aria-label="Change beneficiary bank"
               >
                 ${optionsHtml}
               </select>
@@ -3506,7 +3502,7 @@ function buildInteractiveBeneficiaryCardsHtml(list, contextPrefix = 'dash') {
                 class="olowo-btn-outline-green sm ben-card-bank-update-btn"
                 onclick="updateBeneficiaryBankOnMito('${bId}', '${selectDomId}')"
               >
-                💾 Update Bank &amp; Map Provider ID
+                Update Bank
               </button>
             </div>
           </div>
@@ -3528,24 +3524,21 @@ function updateSelectedDashboardBeneficiaryUi() {
       (selBen.fields && (selBen.fields.fullName || `${selBen.fields.firstName || ''} ${selBen.fields.lastName || ''}`.trim())) ||
       'Selected Beneficiary';
     const bankName = selBen.providerName || 'United Bank for Africa Plc (UBA)';
-    const provId = selBen.providerId || 'e3af932a-0326-4b65-b5f4-e8f753a69d4d';
     const acc = String((selBen.fields && (selBen.fields.accountNumber || selBen.fields.iban)) || '1018316889');
 
     if (banner && bannerText) {
       banner.classList.remove('hidden');
-      bannerText.innerHTML =
-        `✅ <strong>Selected Existing Beneficiary: ${bName}</strong> (<code>${selBen.beneficiaryId}</code> · Account <code>•••• ${acc.slice(-4)}</code>)<br/>` +
-        `🏦 Mapped Bank: <strong>${bankName}</strong> (<code>providerId: ${provId}</code>) — <strong>Beneficiary Hosted Form will be skipped; submitting goes straight to Payment!</strong>`;
+      bannerText.innerHTML = `✅ <strong>${bName}</strong> · 🏦 ${bankName} (<code>•••• ${acc.slice(-4)}</code>)`;
     }
     if (clearBtn) clearBtn.classList.remove('hidden');
     if (submitBtn) {
-      submitBtn.innerHTML = `💳 Lock Rate &amp; Go Straight to Payment (Using ${bName}) →`;
+      submitBtn.innerHTML = `💳 Continue to Payment (${bName}) →`;
     }
   } else {
     if (banner) banner.classList.add('hidden');
     if (clearBtn) clearBtn.classList.add('hidden');
     if (submitBtn) {
-      submitBtn.innerHTML = `🚀 Lock Rate &amp; Submit Transaction (Open MITO Hosted Page) →`;
+      submitBtn.innerHTML = `🚀 Continue to Payment →`;
     }
   }
 }
@@ -3824,9 +3817,9 @@ function renderTransactionsList() {
       tx => `
       <div class="tx-history-row">
         <div>
-          <strong>${tx.beneficiaryName}</strong> <span class="mono-pill">${tx.transactionId}</span>
+          <strong>${tx.beneficiaryName}</strong>
           <div style="font-size:12px;color:#78716c;margin-top:2px;">
-            ${tx.providerName} (${tx.collectionMode}) · Rate ID: <code>${tx.rateId}</code>
+            🏦 ${tx.providerName}
           </div>
         </div>
         <div style="text-align:right;">
