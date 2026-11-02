@@ -4,10 +4,12 @@
 
 const STATE = {
   currentView: 'register',
-  // Step 1: Saved Sender / User Session
-  senderId: 'SND-928C974B',
+  // Step 1: Saved Sender / User Session (Populated dynamically on Step 1 Registration / Login — never hardcoded!)
+  senderId: '',
   sender: {
-    senderId: 'SND-928C974B',
+    senderId: '',
+    userId: '',
+    mitoUserId: '',
     firstName: 'David',
     lastName: 'Beckham',
     screenName: 'David',
@@ -244,9 +246,9 @@ function switchHighLevelFlowMode(mode) {
     if (loginEmailEl) loginEmailEl.value = 'ahmed.diallo@mitonetwork.com';
     STATE.sender = {
       ...STATE.sender,
-      senderId: 'be6b86a7-8484-43df-9af6-09a1d871b8a1',
-      userId: 'be6b86a7-8484-43df-9af6-09a1d871b8a1',
-      mitoUserId: 'be6b86a7-8484-43df-9af6-09a1d871b8a1',
+      senderId: '',
+      userId: '',
+      mitoUserId: '',
       firstName: 'Ahmed',
       lastName: 'Diallo',
       screenName: 'Ahmed',
@@ -260,17 +262,19 @@ function switchHighLevelFlowMode(mode) {
       city: 'London',
       postcode: 'W11 3TD',
       countryIso3: 'GBR',
-      isSubmittedToMito: true,
+      isSubmittedToMito: false,
       kycStatus: 'PASSED',
       kycTier: 'MINI_KYC'
     };
-    STATE.senderId = 'be6b86a7-8484-43df-9af6-09a1d871b8a1';
+    STATE.senderId = '';
     updateTopFlowBarForUserState();
     jumpToView('login');
   } else {
     fillRegistrationPreset('david_incomplete');
     STATE.sender = {
-      senderId: 'SND-928C974B',
+      senderId: '',
+      userId: '',
+      mitoUserId: '',
       firstName: 'David',
       lastName: 'Beckham',
       screenName: 'David',
@@ -291,7 +295,7 @@ function switchHighLevelFlowMode(mode) {
       kycStatus: 'NOT_STARTED',
       kycTier: 'NONE'
     };
-    STATE.senderId = 'SND-928C974B';
+    STATE.senderId = '';
     updateTopFlowBarForUserState();
     jumpToView('register');
   }
@@ -591,7 +595,9 @@ function refreshDashboardHeader() {
   const initials = (first[0] + (last[0] || 'A')).toUpperCase();
   document.getElementById('dashAvatar').textContent = initials;
   document.getElementById('dashUserName').textContent = first;
-  document.getElementById('dashSenderIdBadge').textContent = STATE.senderId;
+  const dynamicUserId =
+    STATE.sender.mitoUserId || STATE.sender.userId || STATE.senderId || 'Pending Registration';
+  document.getElementById('dashSenderIdBadge').textContent = `userId: ${dynamicUserId}`;
 }
 
 function setSendAmountQuick(amount) {
@@ -807,12 +813,23 @@ async function fetchQuoteLive() {
   const fromCountry = STATE.sendCurrency === 'GBP' ? 'GBR' : 'FRA';
   const toCountry = STATE.receiveCountryIso3 || 'NGA';
 
-  const endpointTitle = document.getElementById('affiliateRateEndpointTitle');
-  if (endpointTitle) {
-    endpointTitle.textContent = `GET /api/v1/mito/Exchange/affiliateRates?FromCountry=${fromCountry}&ToCountry=${toCountry}&FromCurrency=${STATE.sendCurrency}&ToCurrency=${STATE.receiveCurrency}`;
+  // Use the dynamic userId returned from Step 1 User Registration (`POST /api/v1/mito/Users`) or Login — NEVER hardcode userId!
+  const dynamicUserId =
+    (STATE.sender && (STATE.sender.mitoUserId || STATE.sender.userId || STATE.sender.senderId)) ||
+    STATE.senderId ||
+    '';
+
+  const badgeCodeEl = document.getElementById('affiliateRatesBadgeCode');
+  if (badgeCodeEl) {
+    badgeCodeEl.textContent = `GET /api/v1/mito/Exchange/affiliateRates?userId=${dynamicUserId || '<userId>'}`;
   }
 
-  const url = `/api/v1/mito/Exchange/affiliateRates?FromCountry=${encodeURIComponent(fromCountry)}&ToCountry=${encodeURIComponent(toCountry)}&FromCurrency=${encodeURIComponent(STATE.sendCurrency)}&ToCurrency=${encodeURIComponent(STATE.receiveCurrency)}&sendAmount=${encodeURIComponent(rawSend)}&collectionMode=${encodeURIComponent(STATE.collectionMode)}`;
+  const endpointTitle = document.getElementById('affiliateRateEndpointTitle');
+  if (endpointTitle) {
+    endpointTitle.textContent = `GET /api/v1/mito/Exchange/affiliateRates?userId=${dynamicUserId || '<userId>'}&FromCountry=${fromCountry}&ToCountry=${toCountry}&FromCurrency=${STATE.sendCurrency}&ToCurrency=${STATE.receiveCurrency}`;
+  }
+
+  const url = `/api/v1/mito/Exchange/affiliateRates?userId=${encodeURIComponent(dynamicUserId)}&FromCountry=${encodeURIComponent(fromCountry)}&ToCountry=${encodeURIComponent(toCountry)}&FromCurrency=${encodeURIComponent(STATE.sendCurrency)}&ToCurrency=${encodeURIComponent(STATE.receiveCurrency)}&sendAmount=${encodeURIComponent(rawSend)}&collectionMode=${encodeURIComponent(STATE.collectionMode)}`;
   const { ok, data } = await callApi('GET', url);
   const q = data && (data.calculatedQuote || data.quote);
   if (ok && q) {
@@ -822,9 +839,11 @@ async function fetchQuoteLive() {
     STATE.commission = q.commission;
     STATE.requiresExtendedKyc = q.requires_extended_kyc;
 
+    const resolvedUserId = q.userId || (data.query && data.query.userId) || dynamicUserId || 'Dynamic userId';
     const affPreview = document.getElementById('affiliateRateResponsePreview');
     if (affPreview) {
       affPreview.innerHTML =
+        `Dynamic <code>userId</code> (not hardcoded): <strong>${resolvedUserId}</strong> &nbsp;·&nbsp; ` +
         `<code>rateMoneyTransfer</code> (Customer rate): <strong>${STATE.customerRate}</strong> &nbsp;·&nbsp; ` +
         `<code>partnerRateMoneyTransfer</code> (Partner rate): <strong>${STATE.partnerRate}</strong> &nbsp;·&nbsp; ` +
         `<code>rateExpiry</code>: <strong>${q.rateExpiry || 'Active'}</strong>`;
@@ -838,7 +857,7 @@ async function fetchQuoteLive() {
     const sendSym = STATE.sendCurrency === 'GBP' ? '£' : '€';
     const recSym = STATE.receiveCurrency === 'NGN' ? '₦' : STATE.receiveCurrency + ' ';
     document.getElementById('rateBadgeText').textContent =
-      `${sendSym}1.00 to ${recSym}${Number(STATE.customerRate).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · affiliate commercial rate`;
+      `${sendSym}1.00 to ${recSym}${Number(STATE.customerRate).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · affiliate commercial rate (userId: ${resolvedUserId})`;
 
     const selBankName =
       (STATE.selectedDroplists.dashProvider && STATE.selectedDroplists.dashProvider.name) ||
@@ -916,8 +935,14 @@ async function lockExchangeRateAfterRateScreen() {
     return false;
   }
 
+  const dynamicUserId =
+    (STATE.sender && (STATE.sender.mitoUserId || STATE.sender.userId || STATE.sender.senderId)) ||
+    STATE.senderId ||
+    null;
+
   const rateRes = await callApi('POST', '/api/v1/mito/Exchange/rates', {
-    senderId: STATE.senderId,
+    userId: dynamicUserId,
+    senderId: STATE.senderId || dynamicUserId,
     beneficiaryId: STATE.beneficiaryId || null,
     providerId: selectedProv.id,
     providerName: selectedProv.name,
@@ -3471,8 +3496,6 @@ window.addEventListener('DOMContentLoaded', async () => {
       window.top.location.href = window.location.href;
       return;
     }
-    refreshDashboardHeader();
-    fetchQuoteLive();
     const txId = params.get('transactionId');
     const status = (params.get('status') || 'SUCCESS').toUpperCase();
     const paymentCase = params.get('paymentCase') || '';
@@ -3483,6 +3506,14 @@ window.addEventListener('DOMContentLoaded', async () => {
     if (txRes.ok && txRes.data && txRes.data.data) {
       const tx = txRes.data.data;
       STATE.transactionId = tx.transactionId;
+      if (tx.userId || tx.mitoUserId || tx.senderId) {
+        STATE.senderId = tx.userId || tx.mitoUserId || tx.senderId;
+        STATE.sender.senderId = STATE.senderId;
+        STATE.sender.userId = tx.userId || tx.mitoUserId || STATE.senderId;
+        STATE.sender.mitoUserId = tx.mitoUserId || tx.userId || STATE.senderId;
+      }
+      refreshDashboardHeader();
+      fetchQuoteLive();
       renderStep7TransactionResult(tx, orderStatus, tx.paymentMethod || 'MITO Hosted Payment', callbackUrl, {
         paymentCase,
         rawMitoOrderStatus: orderStatus,
@@ -3493,6 +3524,5 @@ window.addEventListener('DOMContentLoaded', async () => {
   }
 
   refreshDashboardHeader();
-  fetchQuoteLive();
   jumpToView('register');
 });

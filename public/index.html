@@ -237,7 +237,7 @@
               </button>
             </div>
             <div style="font-size:12px;color:#14532d;line-height:1.45;">
-              <strong>End-to-End Flow:</strong> 1. User Registers (All Sender Info in 1 Form → <code>POST /api/v1/mito/Users</code>) → 2. Get Corridors &amp; Rates (<code>GET /Exchange/corridors</code> + <code>GET /Exchange/affiliateRates</code>) → 3. Select Bank (<code>GET /Providers</code>) → 4. Lock Rate (<code>POST /Exchange/rates</code>) → 5. Submit Transaction (<code>POST /Transactions/InitiateHostedTransaction</code>) → <strong>MITO Hosted Page continues flow for creating Beneficiary &amp; any required info + Payment</strong>!
+              <strong>End-to-End Flow:</strong> 1. User Registers (All Sender Info in 1 Form → <code>POST /api/v1/mito/Users</code> returns dynamic <code>userId</code>) → 2. Get Corridors &amp; Rates using dynamic <code>userId</code> (<code>GET /Exchange/corridors</code> + <code>GET /Exchange/affiliateRates?userId=&lt;userId&gt;</code> — not hardcoded) → 3. Select Bank (<code>GET /Providers</code>) → 4. Lock Rate (<code>POST /Exchange/rates</code>) → 5. Submit Transaction (<code>POST /Transactions/InitiateHostedTransaction</code>) → <strong>MITO Hosted Page continues flow for creating Beneficiary &amp; Payment</strong>!
             </div>
           </div>
 
@@ -454,7 +454,7 @@
             <div class="olowo-user-text">
               <span class="hi-label">Hi</span>
               <strong id="dashUserName">David</strong>
-              <span class="sender-id-pill" id="dashSenderIdBadge">SND-928C974B</span>
+              <span class="sender-id-pill" id="dashSenderIdBadge">userId: Assigned on Step 1</span>
             </div>
           </div>
 
@@ -494,19 +494,19 @@
             <a href="#transactionsSection" class="olowo-transactions-link">Transactions &nbsp;›</a>
           </div>
 
-          <!-- API Endpoint Banner for Step 2: Get Corridors + Affiliate Commercial Rates + Get Providers (Banks) -->
+          <!-- API Endpoint Banner for Step 2: Get Corridors + Affiliate Commercial Rates (using dynamic userId) + Get Providers (Banks) -->
           <div class="mito-api-status-strip mb-14" style="flex-direction:column;align-items:stretch;gap:6px;">
             <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
               <span class="api-badge-ok">📡 1. Corridors: <code>GET /api/v1/mito/Exchange/corridors</code></span>
-              <span class="api-badge-ok">📡 2. Rates: <code>GET /api/v1/mito/Exchange/affiliateRates</code></span>
+              <span class="api-badge-ok">📡 2. Rates: <code id="affiliateRatesBadgeCode">GET /api/v1/mito/Exchange/affiliateRates?userId=&lt;userId&gt;</code></span>
               <span class="api-badge-ok">📡 3. Banks: <code>GET /api/v1/mito/Providers</code></span>
               <span class="api-badge-url" id="corridorsDiscoveredBadge">55 Active Corridors Discovered</span>
             </div>
             <div style="font-family:'JetBrains Mono',monospace;font-size:11px;background:#0f172a;color:#e2e8f0;padding:9px 12px;border-radius:8px;line-height:1.45;">
-              <div style="color:#4ade80;font-weight:700;" id="affiliateRateEndpointTitle">GET /api/v1/mito/Exchange/affiliateRates?FromCountry=GBR&amp;ToCountry=NGA&amp;FromCurrency=GBP&amp;ToCurrency=NGN</div>
-              <div style="color:#94a3b8;">Flow: Get Corridors &amp; Rates → Select Bank (<code>GET /Providers</code> for receive country/currency) → Lock Rate (<code>POST /Exchange/rates</code>) → Submit Transaction (<code>POST /Transactions/InitiateHostedTransaction</code>)</div>
+              <div style="color:#4ade80;font-weight:700;" id="affiliateRateEndpointTitle">GET /api/v1/mito/Exchange/affiliateRates?userId=&lt;dynamic-userId&gt;&amp;FromCountry=GBR&amp;ToCountry=NGA&amp;FromCurrency=GBP&amp;ToCurrency=NGN</div>
+              <div style="color:#94a3b8;">Flow: Get Corridors &amp; Rates (using dynamic <code>userId</code> from Step 1 — never hardcoded) → Select Bank (<code>GET /Providers</code> for receive country/currency) → Lock Rate (<code>POST /Exchange/rates</code>) → Submit Transaction (<code>POST /Transactions/InitiateHostedTransaction</code>)</div>
               <div style="color:#fde047;margin-top:3px;" id="affiliateRateResponsePreview">
-                <code>rateMoneyTransfer</code> (Customer rate): <strong>1831.01</strong> · <code>partnerRateMoneyTransfer</code> (Partner rate): <strong>1831.01</strong> · <code>rateExpiry</code>: <strong>Live</strong>
+                Dynamic <code>userId</code> (not hardcoded): <strong>Assigned on Step 1</strong> · <code>rateMoneyTransfer</code> (Customer rate): <strong>1831.01</strong> · <code>partnerRateMoneyTransfer</code> (Partner rate): <strong>1831.01</strong> · <code>rateExpiry</code>: <strong>Live</strong>
               </div>
               <div style="color:#93c5fd;margin-top:3px;" id="corridorsResponsePreview">
                 Active Corridors: <code>GBP→NGN (GBR→NGA)</code>, <code>EUR→XOF (FRA→SEN)</code>, <code>EUR→XOF (FRA→MLI)</code>, <code>GBP→KES (GBR→KEN)</code>
@@ -1564,7 +1564,7 @@
           <div class="olowo-summary-card">
             <h4>Sender</h4>
             <div class="sum-row"><span>Name</span><strong id="sumSenderName">David Beckham</strong></div>
-            <div class="sum-row"><span>MITO Sender ID</span><strong class="mono-pill" id="sumSenderId">SND-928C974B</strong></div>
+            <div class="sum-row"><span>MITO User ID (<code>userId</code>)</span><strong class="mono-pill" id="sumSenderId">Assigned on Step 1</strong></div>
             <div class="sum-row"><span>KYC Status</span><strong id="sumSenderKyc">PASSED (MINI_KYC)</strong></div>
             <div class="sum-row"><span>Email</span><strong id="sumSenderEmail">mohammadmumtazkhan+24@example.com</strong></div>
             <div class="sum-row"><span>Phone</span><strong id="sumSenderPhone">+44 7553039222</strong></div>
@@ -1950,7 +1950,7 @@
             <h3>Streamlined Olowo × MITO Integration Flow</h3>
             <ol class="doc-steps-list">
               <li><strong>Step 1 — Unified User/Sender Registration (`/register` &amp; `/login`)</strong>: User registration happens at the beginning in <strong>one single form</strong> collecting all personal, account, and residential address fields, and immediately submits to <code>POST /api/olowo/auth/register</code> &amp; <code>POST /api/v1/mito/Users</code> to obtain the MITO <code>userId</code>. No separate KYC page is shown.</li>
-              <li><strong>Step 2 — Get Corridors &amp; Show Rates (`/remittances/create`)</strong>: Calls <code>GET /api/v1/mito/Exchange/corridors</code> &amp; <code>GET /api/v1/mito/Exchange/affiliateRates</code> to display live corridors and commercial exchange rates.</li>
+              <li><strong>Step 2 — Get Corridors &amp; Show Rates (`/remittances/create`)</strong>: Calls <code>GET /api/v1/mito/Exchange/corridors</code> &amp; <code>GET /api/v1/mito/Exchange/affiliateRates?userId=&lt;userId&gt;</code> using the dynamic <code>userId</code> from Step 1 (never hardcoded) to display live corridors and commercial exchange rates.</li>
               <li><strong>Step 3 — Select Bank (`GET /api/v1/mito/Providers`)</strong>: Based on the selected receive country/currency and collection mode (<code>BANKACCOUNT</code> or <code>MOBILEMONEY</code>), fetches providers via <code>GET /api/v1/mito/Providers</code> so the user selects the destination bank/provider right on the Rate screen.</li>
               <li><strong>Step 4 — Lock Rate &amp; Submit Transaction (`POST /Exchange/rates` → `POST /Transactions/InitiateHostedTransaction`)</strong>: Locks the exchange rate with the selected <code>providerId</code> (starting the side expiry countdown timer) and submits the transaction to MITO.</li>
               <li><strong>Step 5 — MITO Hosted Page Continues Flow (`requiredAction`)</strong>: MITO returns a hosted page in response that continues the flow for creating/selecting the beneficiary, any required info if needed, and completing payment, then redirects to <code>/remittances/callback</code>.</li>

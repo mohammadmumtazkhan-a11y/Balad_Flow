@@ -1069,7 +1069,15 @@ app.get('/api/v1/mito/corridors', handleMitoGetCorridors);
 //     Query params: userId, FromCountry, ToCountry, FromCurrency, ToCurrency
 // ============================================================================
 async function handleMitoGetAffiliateRates(req, res) {
-  const userId = req.query.userId || null;
+  const rawUserId = req.query.userId || req.query.senderId || null;
+  const matchedSender = rawUserId
+    ? findSenderByEmailOrId({ userId: rawUserId, senderId: rawUserId })
+    : null;
+  const userId =
+    (matchedSender && (matchedSender.mitoUserId || matchedSender.userId)) ||
+    rawUserId ||
+    null;
+
   const FromCountry = req.query.FromCountry || req.query.fromCountry || 'GBR';
   const ToCountry = req.query.ToCountry || req.query.toCountry || 'NGA';
   const FromCurrency = req.query.FromCurrency || req.query.fromCurrency || 'GBP';
@@ -1131,7 +1139,7 @@ async function handleMitoGetAffiliateRates(req, res) {
   res.json({
     code: 200,
     responseType: 'Success',
-    message: `Affiliate commercial rates fetched via GET /api/v1/mito/Exchange/affiliateRates (${FromCountry}:${FromCurrency} -> ${ToCountry}:${ToCurrency}).`,
+    message: `Affiliate commercial rates fetched via GET /api/v1/mito/Exchange/affiliateRates with dynamic userId=${userId || '(none)'} (${FromCountry}:${FromCurrency} -> ${ToCountry}:${ToCurrency}).`,
     query: {
       userId: userId || '(omitted)',
       FromCountry,
@@ -1143,6 +1151,7 @@ async function handleMitoGetAffiliateRates(req, res) {
     stagingStatus: stagingResult ? stagingResult.status : 200,
     data: liveAffiliateRateItems,
     calculatedQuote: {
+      userId: userId || null,
       corridor_code: corridor.code,
       send_currency: FromCurrency,
       receive_currency: ToCurrency,
@@ -1818,6 +1827,7 @@ app.get(['/api/v1/mito/Beneficiary', '/api/v1/mito/Beneficiaries', '/api/v1/mito
 // ============================================================================
 app.post('/api/v1/mito/Exchange/rates', async (req, res) => {
   const {
+    userId: requestedUserId = null,
     senderId,
     beneficiaryId = null,
     sendCurrency = 'GBP',
@@ -1830,12 +1840,18 @@ app.post('/api/v1/mito/Exchange/rates', async (req, res) => {
     providerName = null
   } = req.body;
 
-  const sender = (senderId && SENDERS.get(senderId)) || Array.from(SENDERS.values())[0];
+  const sender =
+    findSenderByEmailOrId({ userId: requestedUserId || senderId, senderId }) ||
+    (senderId && SENDERS.get(senderId)) ||
+    Array.from(SENDERS.values())[0];
   const beneficiary = beneficiaryId ? BENEFICIARIES.get(beneficiaryId) : null;
 
   const corridor = CORRIDORS.find(c => c.receiveCountryIso3 === receiveCountryIso3) || CORRIDORS[0];
   const numericAmount = Number(sendAmount);
-  const realUserId = (sender && sender.mitoUserId) || MITO_STAGING_CONFIG.defaultQuoteUserId;
+  const realUserId =
+    requestedUserId ||
+    (sender && (sender.mitoUserId || sender.userId)) ||
+    MITO_STAGING_CONFIG.defaultQuoteUserId;
   const realProviderId =
     (providerId && providerId.length > 20 ? providerId : null) ||
     (beneficiary && beneficiary.providerId && beneficiary.providerId.length > 20 ? beneficiary.providerId : null) ||
