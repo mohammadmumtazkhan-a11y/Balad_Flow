@@ -143,13 +143,13 @@
 
           <form id="formLogin" onsubmit="handleLoginSubmit(event)">
             <div class="olowo-field">
-              <label for="loginEmail">Email (Existing Registered User)</label>
+              <label for="loginEmail">Email (Existing Registered User) <span class="req-star">(Mandatory *)</span></label>
               <input type="email" id="loginEmail" class="olowo-input beige-fill" value="ahmed.diallo@mitonetwork.com" placeholder="you@example.com" required />
             </div>
 
             <div class="olowo-field">
               <div class="olowo-label-row">
-                <label for="loginPassword">Password</label>
+                <label for="loginPassword">Password <span class="req-star">(Mandatory *)</span></label>
                 <a href="#forgot" class="olowo-muted-link" onclick="return false;">Forgot password?</a>
               </div>
               <div class="olowo-input-icon-wrap">
@@ -232,22 +232,22 @@
 
             <div class="olowo-grid-2">
               <div class="olowo-field">
-                <label for="regFirstName">First Name <span class="req-star">*</span></label>
+                <label for="regFirstName">First Name <span class="req-star">(Mandatory *)</span></label>
                 <input type="text" id="regFirstName" class="olowo-input blue-tint" value="David" oninput="syncRegFullNameFromParts()" required />
               </div>
               <div class="olowo-field">
-                <label for="regLastName">Last Name <span class="req-star">*</span></label>
+                <label for="regLastName">Last Name <span class="req-star">(Mandatory *)</span></label>
                 <input type="text" id="regLastName" class="olowo-input blue-tint" value="Beckham" oninput="syncRegFullNameFromParts()" required />
               </div>
             </div>
 
             <div class="olowo-grid-2">
               <div class="olowo-field">
-                <label for="regEmail">Email <span class="req-star">*</span></label>
+                <label for="regEmail">Email <span class="req-star">(Mandatory *)</span></label>
                 <input type="email" id="regEmail" class="olowo-input beige-fill" value="mohammadmumtazkhan+24@example.com" required />
               </div>
               <div class="olowo-field">
-                <label>Phone number <span class="req-star">*</span></label>
+                <label>Phone number <span class="req-star">(Mandatory *)</span></label>
                 <div class="olowo-phone-grid">
                   <select id="regDialCode" class="olowo-input beige-fill">
                     <option value="+44" selected>+44 UK</option>
@@ -261,14 +261,14 @@
 
             <div class="olowo-grid-2">
               <div class="olowo-field">
-                <label for="regPassword">Password <span class="req-star">*</span></label>
+                <label for="regPassword">Password <span class="req-star">(Mandatory *)</span></label>
                 <div class="olowo-input-icon-wrap">
                   <input type="password" id="regPassword" class="olowo-input beige-fill" value="••••••••••••" required />
                   <span class="olowo-eye-icon">👁</span>
                 </div>
               </div>
               <div class="olowo-field">
-                <label for="regConfirmPassword">Confirm password <span class="req-star">*</span></label>
+                <label for="regConfirmPassword">Confirm password <span class="req-star">(Mandatory *)</span></label>
                 <div class="olowo-input-icon-wrap">
                   <input type="password" id="regConfirmPassword" class="olowo-input beige-fill" value="••••••••••••" required />
                   <span class="olowo-eye-icon">👁</span>
@@ -278,14 +278,14 @@
 
             <div class="olowo-grid-2">
               <div class="olowo-field">
-                <label for="regEntityType">Account Type <span class="req-star">*</span></label>
+                <label for="regEntityType">Account Type <span class="req-star">(Mandatory *)</span></label>
                 <select id="regEntityType" class="olowo-input beige-fill" onchange="document.getElementById('regBusinessEntityRow').classList.toggle('hidden', this.value !== 'B');">
                   <option value="I" selected>Individual</option>
                   <option value="B">Business</option>
                 </select>
               </div>
               <div class="olowo-field">
-                <label for="regCountryIso3">Country of Residence <span class="req-star">*</span></label>
+                <label for="regCountryIso3">Country of Residence <span class="req-star">(Mandatory *)</span></label>
                 <select id="regCountryIso3" class="olowo-input beige-fill" required>
                   <option value="GBR" selected>United Kingdom</option>
                   <option value="FRA">France</option>
@@ -295,22 +295,22 @@
 
             <div id="regBusinessEntityRow" class="olowo-grid-2 hidden">
               <div class="olowo-field">
-                <label for="regCompanyNumber">Company Number <span class="req-star">*</span></label>
+                <label for="regCompanyNumber">Company Number <span class="req-star">(Mandatory *)</span></label>
                 <input type="text" id="regCompanyNumber" class="olowo-input beige-fill" placeholder="e.g. 12345678" />
               </div>
               <div class="olowo-field">
-                <label for="regBusinessName">Business Name <span class="req-star">*</span></label>
+                <label for="regBusinessName">Business Name <span class="req-star">(Mandatory *)</span></label>
                 <input type="text" id="regBusinessName" class="olowo-input beige-fill" placeholder="e.g. Olowo Ventures Ltd" />
               </div>
             </div>
 
             <div class="olowo-grid-2">
               <div class="olowo-field">
-                <label for="regStreet">Street Address <span class="req-star">*</span></label>
+                <label for="regStreet">Street Address <span class="req-star">(Mandatory *)</span></label>
                 <input type="text" id="regStreet" class="olowo-input blue-tint" value="Holland Park" placeholder="Enter street address..." required />
               </div>
               <div class="olowo-field">
-                <label for="regCity">City <span class="req-star">*</span></label>
+                <label for="regCity">City <span class="req-star">(Mandatory *)</span></label>
                 <input type="text" id="regCity" class="olowo-input beige-fill" value="London" placeholder="Enter city" required />
               </div>
             </div>
@@ -609,7 +609,7 @@
 
             <!-- Downward-Opening Searchable Bank / Provider Droplist -->
             <div class="olowo-field">
-              <label id="dashProviderLabel">Recipient Bank / Provider <span class="req-star">*</span></label>
+              <label id="dashProviderLabel">Recipient Bank / Provider <span class="req-star">(Mandatory *)</span></label>
               <div class="downward-droplist" id="droplist-dashProvider">
                 <button type="button" class="droplist-trigger" onclick="toggleDownwardDroplist('dashProvider')">
                   <span id="droplistSelected-dashProvider">-- Select Recipient Bank --</span>
@@ -767,7 +767,7 @@
               <!-- Expandable Edit Form inside Linked Profile (Exact match to screenshot 8) -->
               <div id="linkedProfileEditForm" class="linked-profile-edit-box hidden">
                 <div class="olowo-field">
-                  <label>Profile legal name <span class="req-star">*</span></label>
+                  <label>Profile legal name <span class="req-star">(Mandatory *)</span></label>
                   <input type="text" id="profLegalName" class="olowo-input" value="David Beckham" />
                   <div class="olowo-field-hint">As on the bank account this profile pays from.</div>
                 </div>
@@ -776,7 +776,7 @@
                   <input type="text" id="profScreenName" class="olowo-input" value="David" />
                 </div>
                 <div class="olowo-field">
-                  <label>Phone number <span class="req-star">*</span></label>
+                  <label>Phone number <span class="req-star">(Mandatory *)</span></label>
                   <div class="olowo-phone-grid">
                     <select id="profDialCode" class="olowo-input">
                       <option value="+44" selected>+44 United Kingdom</option>
@@ -831,18 +831,18 @@
             <div class="olowo-form-box">
               <div class="olowo-grid-2">
                 <div class="olowo-field">
-                  <label>Email ID (<code>email</code> — Checked at User Creation) <span class="req-star">*</span></label>
+                  <label>Email ID (<code>email</code> — Checked at User Creation) <span class="req-star">(Mandatory *)</span></label>
                   <input type="email" id="senderEmailInput" class="olowo-input" value="mohammadmumtazkhan+24@example.com" oninput="checkSenderDetailsChangedLive()" />
                 </div>
                 <div class="olowo-field">
-                  <label>Phone Number (<code>phoneNumber</code>) <span class="req-star">*</span></label>
+                  <label>Phone Number (<code>phoneNumber</code>) <span class="req-star">(Mandatory *)</span></label>
                   <input type="tel" id="senderPhoneFullInput" class="olowo-input" value="+447553039222" oninput="checkSenderDetailsChangedLive()" />
                 </div>
               </div>
 
               <div class="olowo-grid-2">
                 <div class="olowo-field">
-                  <label>Legal First Name (<code>firstName</code>) <span class="req-star">*</span></label>
+                  <label>Legal First Name (<code>firstName</code>) <span class="req-star">(Mandatory *)</span></label>
                   <input type="text" id="senderFirstNameInput" class="olowo-input" value="David" oninput="checkSenderDetailsChangedLive()" />
                 </div>
                 <div class="olowo-field">
@@ -853,12 +853,13 @@
 
               <div class="olowo-grid-2">
                 <div class="olowo-field">
-                  <label>Legal Last Name (<code>lastName</code>) <span class="req-star">*</span></label>
+                  <label>Legal Last Name (<code>lastName</code>) <span class="req-star">(Mandatory *)</span></label>
                   <input type="text" id="senderLastNameInput" class="olowo-input" value="Beckham" oninput="checkSenderDetailsChangedLive()" />
                 </div>
                 <div class="olowo-field">
-                  <label>Gender (<code>gender</code>: M or F) <span class="req-star">*</span></label>
+                  <label>Gender (<code>gender</code>: M or F) <span class="muted-hint">(Optional)</span></label>
                   <select id="senderGenderInput" class="olowo-input" onchange="checkSenderDetailsChangedLive()">
+                    <option value="">Optional</option>
                     <option value="M" selected>M — Male</option>
                     <option value="F">F — Female</option>
                   </select>
@@ -867,11 +868,11 @@
 
               <div class="olowo-grid-2">
                 <div class="olowo-field">
-                  <label>Date of Birth (<code>dateOfBirth</code>: yyyy-MM-dd) <span class="req-star">*</span></label>
+                  <label>Date of Birth (<code>dateOfBirth</code>: yyyy-MM-dd) <span class="muted-hint">(Optional)</span></label>
                   <input type="date" id="senderDobInput" class="olowo-input" value="1975-05-02" onchange="checkSenderDetailsChangedLive()" />
                 </div>
                 <div class="olowo-field">
-                  <label>Legal Entity Type (<code>legalEntityType</code>: I or B) <span class="req-star">*</span></label>
+                  <label>Legal Entity Type (<code>legalEntityType</code>: I or B) <span class="req-star">(Mandatory *)</span></label>
                   <select id="senderEntityTypeInput" class="olowo-input" onchange="document.getElementById('businessEntityConditionalRow').classList.toggle('hidden', this.value !== 'B'); checkSenderDetailsChangedLive();">
                     <option value="I" selected>I — Individual</option>
                     <option value="B">B — Business</option>
@@ -882,11 +883,11 @@
               <!-- Conditional Business Fields when legalEntityType === 'B' -->
               <div id="businessEntityConditionalRow" class="olowo-grid-2 hidden">
                 <div class="olowo-field">
-                  <label>Company Number (<code>companyNumber</code>) <span class="req-star">*</span></label>
+                  <label>Company Number (<code>companyNumber</code>) <span class="req-star">(Mandatory *)</span></label>
                   <input type="text" id="senderCompanyNumberInput" class="olowo-input" placeholder="e.g. 12345678" oninput="checkSenderDetailsChangedLive()" />
                 </div>
                 <div class="olowo-field">
-                  <label>Business Name (<code>businessName</code>) <span class="req-star">*</span></label>
+                  <label>Business Name (<code>businessName</code>) <span class="req-star">(Mandatory *)</span></label>
                   <input type="text" id="senderBusinessNameInput" class="olowo-input" placeholder="e.g. Olowo Ventures Ltd" oninput="checkSenderDetailsChangedLive()" />
                 </div>
               </div>
@@ -903,7 +904,7 @@
               </div>
 
               <div class="olowo-field">
-                <label>Street (<code>street</code>) <span class="req-star">*</span></label>
+                <label>Street (<code>street</code>) <span class="req-star">(Mandatory *)</span></label>
                 <input
                   type="text"
                   id="senderAddress1Input"
@@ -916,26 +917,27 @@
 
               <div class="olowo-grid-2">
                 <div class="olowo-field">
-                  <label>City (<code>addressCity</code>) <span class="req-star">*</span></label>
+                  <label>City (<code>addressCity</code>) <span class="req-star">(Mandatory *)</span></label>
                   <input type="text" id="senderCityInput" class="olowo-input" value="London" placeholder="Enter city" oninput="checkSenderDetailsChangedLive()" />
                 </div>
                 <div class="olowo-field">
-                  <label>Postcode (<code>addressPostcode</code>) <span class="req-star">*</span></label>
-                  <input type="text" id="senderPostcodeInput" class="olowo-input" value="W11 3TD" placeholder="Enter postcode" oninput="checkSenderDetailsChangedLive()" />
+                  <label>Postcode (<code>addressPostcode</code>) <span class="muted-hint">(Optional)</span></label>
+                  <input type="text" id="senderPostcodeInput" class="olowo-input" value="W11 3TD" placeholder="Optional" oninput="checkSenderDetailsChangedLive()" />
                 </div>
               </div>
 
               <div class="olowo-grid-2">
                 <div class="olowo-field">
-                  <label>Customer &amp; Address Country ISO3 (<code>countryIso3</code> / <code>addressCountryIso3</code>) <span class="req-star">*</span></label>
+                  <label>Customer &amp; Address Country ISO3 (<code>countryIso3</code> / <code>addressCountryIso3</code>) <span class="req-star">(Mandatory *)</span></label>
                   <select id="senderCountryInput" class="olowo-input" onchange="checkSenderDetailsChangedLive()">
                     <option value="GBR" selected>GBR — United Kingdom</option>
                     <option value="FRA">FRA — France</option>
                   </select>
                 </div>
                 <div class="olowo-field">
-                  <label>Birth Country ISO3 (<code>birthCountryIso3</code>) <span class="req-star">*</span></label>
+                  <label>Birth Country ISO3 (<code>birthCountryIso3</code>) <span class="muted-hint">(Optional)</span></label>
                   <select id="senderBirthCountryInput" class="olowo-input" onchange="checkSenderDetailsChangedLive()">
+                    <option value="">Optional</option>
                     <option value="GBR" selected>GBR — United Kingdom</option>
                     <option value="NGA">NGA — Nigeria</option>
                     <option value="FRA">FRA — France</option>
@@ -951,7 +953,7 @@
                 </p>
                 <div class="olowo-grid-2">
                   <div class="olowo-field">
-                    <label>ID Document Type <span class="req-star">*</span></label>
+                    <label>ID Document Type <span class="req-star">(Mandatory *)</span></label>
                     <select id="senderIdDocType" class="olowo-input">
                       <option value="PASSPORT" selected>UK / International Passport</option>
                       <option value="DRIVING_LICENCE">Biometric Driving Licence</option>
@@ -959,7 +961,7 @@
                     </select>
                   </div>
                   <div class="olowo-field">
-                    <label>Document Number <span class="req-star">*</span></label>
+                    <label>Document Number <span class="req-star">(Mandatory *)</span></label>
                     <input type="text" id="senderIdDocNumber" class="olowo-input" value="GBR-99281726" />
                   </div>
                 </div>
@@ -1180,7 +1182,7 @@
 
             <div class="olowo-form-box">
               <div class="olowo-field">
-                <label for="benFullName">Full name <span class="req-star">*</span></label>
+                <label for="benFullName">Full name <span class="req-star">(Mandatory *)</span></label>
                 <input
                   type="text"
                   id="benFullName"
@@ -1192,7 +1194,7 @@
               </div>
 
               <div class="olowo-field">
-                <label for="benAccountNumber" id="benAccountLabel">Account number <span class="req-star">*</span></label>
+                <label for="benAccountNumber" id="benAccountLabel">Account number <span class="req-star">(Mandatory *)</span></label>
                 <input
                   type="text"
                   id="benAccountNumber"
@@ -1208,7 +1210,7 @@
 
               <!-- SEARCHABLE DOWNWARD DROPLIST 1: BANK / MOBILE NETWORK PROVIDER -->
               <div class="olowo-field">
-                <label id="benProviderLabel">Bank / Mobile Network Provider <span class="req-star">*</span> <span class="api-tag">Searchable · Always Opens Downwards ↓</span></label>
+                <label id="benProviderLabel">Bank / Mobile Network Provider <span class="req-star">(Mandatory *)</span> <span class="api-tag">Searchable · Always Opens Downwards ↓</span></label>
                 <div class="downward-droplist" id="droplist-provider">
                   <button type="button" class="droplist-trigger" onclick="toggleDownwardDroplist('provider')">
                     <span id="droplistSelected-provider">United Bank for Africa Plc (UBA)</span>
@@ -1273,7 +1275,7 @@
             <div class="olowo-grid-3">
               <!-- Source of Funds (Primary required field highlighted first!) -->
               <div class="olowo-field">
-                <label>Source of funds (<code>sourceOfFundCode</code>) <span class="req-star">*</span> <span class="api-tag">↓</span></label>
+                <label>Source of funds (<code>sourceOfFundCode</code>) <span class="req-star">(Mandatory *)</span> <span class="api-tag">↓</span></label>
                 <div class="downward-droplist" id="droplist-sof">
                   <button type="button" class="droplist-trigger" onclick="toggleDownwardDroplist('sof')">
                     <span id="droplistSelected-sof">Salary</span>
@@ -1296,7 +1298,7 @@
 
               <!-- Transfer Reason -->
               <div class="olowo-field">
-                <label>Transfer reason (<code>reasonCode</code>) <span class="req-star">*</span> <span class="api-tag">↓</span></label>
+                <label>Transfer reason (<code>reasonCode</code>) <span class="req-star">(Mandatory *)</span> <span class="api-tag">↓</span></label>
                 <div class="downward-droplist" id="droplist-reason">
                   <button type="button" class="droplist-trigger" onclick="toggleDownwardDroplist('reason')">
                     <span id="droplistSelected-reason">For Own Expenditures</span>
@@ -1319,7 +1321,7 @@
 
               <!-- Relationship -->
               <div class="olowo-field">
-                <label>Relationship <span class="req-star">*</span> <span class="api-tag">↓</span></label>
+                <label>Relationship <span class="req-star">(Mandatory *)</span> <span class="api-tag">↓</span></label>
                 <div class="downward-droplist" id="droplist-relationship">
                   <button type="button" class="droplist-trigger" onclick="toggleDownwardDroplist('relationship')">
                     <span id="droplistSelected-relationship">Family</span>
@@ -1343,7 +1345,7 @@
 
             <!-- Payment Narration (Required by POST /Transactions/InitiateHostedTransaction) -->
             <div class="olowo-field mt-12">
-              <label for="benPaymentNarration">Payment Narration (<code>paymentNarration</code>) <span class="req-star">*</span></label>
+              <label for="benPaymentNarration">Payment Narration (<code>paymentNarration</code>) <span class="req-star">(Mandatory *)</span></label>
               <input
                 type="text"
                 id="benPaymentNarration"
@@ -1447,16 +1449,16 @@
             <h4>Hosted Transaction &amp; Redirect URL (<code>InitiateHostedTransaction</code>)</h4>
             <div class="olowo-grid-2 mt-8">
               <div class="olowo-field">
-                <label>Return Redirect URL (<code>redirectUrl</code>) <span class="req-star">*</span></label>
+                <label>Return Redirect URL (<code>redirectUrl</code>) <span class="req-star">(Mandatory *)</span></label>
                 <input type="text" id="sumRedirectUrlInput" class="olowo-input" value="http://localhost:3000/remittances/callback" />
               </div>
               <div class="olowo-field">
-                <label>Idempotent Partner Reference (<code>PartnerReferenceNumber</code>) <span class="req-star">*</span></label>
+                <label>Idempotent Partner Reference (<code>PartnerReferenceNumber</code>) <span class="req-star">(Mandatory *)</span></label>
                 <input type="text" id="sumPartnerRefInput" class="olowo-input" value="OLW-REF-20261031" />
               </div>
             </div>
             <div class="olowo-field mt-8">
-              <label>Payment Narration (<code>paymentNarration</code>) <span class="req-star">*</span></label>
+              <label>Payment Narration (<code>paymentNarration</code>) <span class="req-star">(Mandatory *)</span></label>
               <input type="text" id="sumNarrationInput" class="olowo-input" value="Remittance transfer via Olowo / Balad" />
             </div>
           </div>

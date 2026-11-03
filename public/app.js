@@ -769,13 +769,13 @@ function setCollectionMode(mode) {
   const provLabel = document.getElementById('benProviderLabel');
   if (accLabel) {
     accLabel.innerHTML = isBank
-      ? 'Account number <span class="req-star">*</span>'
-      : 'Mobile Money Wallet / Phone Number <span class="req-star">*</span>';
+      ? 'Account number <span class="req-star">(Mandatory *)</span>'
+      : 'Mobile Money Wallet / Phone Number <span class="req-star">(Mandatory *)</span>';
   }
   if (provLabel) {
     provLabel.innerHTML = isBank
-      ? 'Bank <span class="req-star">*</span> <span class="api-tag">Searchable · Always Opens Downwards ↓</span>'
-      : 'Mobile Network Provider <span class="req-star">*</span> <span class="api-tag">Searchable · Always Opens Downwards ↓</span>';
+      ? 'Bank <span class="req-star">(Mandatory *)</span> <span class="api-tag">Searchable · Always Opens Downwards ↓</span>'
+      : 'Mobile Network Provider <span class="req-star">(Mandatory *)</span> <span class="api-tag">Searchable · Always Opens Downwards ↓</span>';
   }
 
   fetchQuoteLive();
@@ -1825,11 +1825,11 @@ function renderExtraCountryBeneficiaryFields() {
     extraBox.classList.remove('hidden');
     extraBox.innerHTML = `
       <div class="olowo-field">
-        <label>IBAN / Account Number (${STATE.receiveCountryName}) <span class="req-star">*</span></label>
+        <label>IBAN / Account Number (${STATE.receiveCountryName}) <span class="req-star">(Mandatory *)</span></label>
         <input type="text" id="benIbanInput" class="olowo-input" value="SN08SN01201001001831688801" />
       </div>
       <div class="olowo-field">
-        <label>SWIFT / BIC Code <span class="req-star">*</span></label>
+        <label>SWIFT / BIC Code <span class="req-star">(Mandatory *)</span></label>
         <input type="text" id="benSwiftInput" class="olowo-input" value="CBAOSNDAXXX" />
       </div>
     `;
