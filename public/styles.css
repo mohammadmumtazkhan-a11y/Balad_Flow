@@ -341,8 +341,14 @@ body {
 }
 .req-star {
   color: #dc2626;
-  font-weight: 600;
+  font-weight: 800;
+  font-size: 0.9rem;
+}
+.req-mandatory {
+  color: #64748b;
+  font-weight: 500;
   font-size: 0.78rem;
+  text-transform: lowercase;
 }
 .muted-hint {
   color: #a8a29e;
