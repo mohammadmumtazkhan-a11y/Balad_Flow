@@ -42,7 +42,7 @@ async function runE2ETests() {
         presetMode: 'david_incomplete',
         forceResetKyc: true,
         fullName: 'David Beckham',
-        email: 'mohammadmumtazkhan+24@example.com',
+        email: 'mohammadmumtazkhan+24@gmail.com',
         phoneDialCode: '+44',
         phone: '7553039222',
         baseCurrency: 'GBP'
@@ -85,7 +85,7 @@ async function runE2ETests() {
         senderId: newUser.senderId,
         firstName: 'David',
         lastName: 'Beckham',
-        email: 'mohammadmumtazkhan+24@example.com',
+        email: 'mohammadmumtazkhan+24@gmail.com',
         phone: '7553039222',
         phoneDialCode: '+44',
         gender: 'M',
@@ -96,7 +96,7 @@ async function runE2ETests() {
         buildingNumber: '23',
         street: 'Holland Park',
         addressCity: 'London',
-        addressPostcode: 'W11 3TD',
+        addressPostcode: 'W11 3TH',
         addressCountryIso3: 'GBR'
       })
     }).then(r => r.json());
