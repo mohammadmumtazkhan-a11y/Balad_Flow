@@ -520,8 +520,8 @@ async function handleRegisterSubmit(event) {
   const email = (document.getElementById('regEmail')?.value || '').trim() || 'mohammadmumtazkhan+24@example.com';
   const phoneDialCode = document.getElementById('regDialCode')?.value || '+44';
   const rawPhone = (document.getElementById('regPhone')?.value || '').replace(/^\+44\s*/, '').trim() || '7553039222';
-  const gender = document.getElementById('regGender')?.value || 'M';
-  const dob = (document.getElementById('regDob')?.value || '').trim() || '1975-05-02';
+  const gender = (document.getElementById('regGender')?.value || '').trim();
+  const dob = (document.getElementById('regDob')?.value || '').trim();
   const baseCurrency = document.getElementById('regBaseCurrency')?.value || 'GBP';
   const legalEntityType = document.getElementById('regEntityType')?.value || 'I';
   const companyNumber = legalEntityType === 'B' ? (document.getElementById('regCompanyNumber')?.value || '').trim() : null;
@@ -530,9 +530,9 @@ async function handleRegisterSubmit(event) {
   const subStreet = (document.getElementById('regSubStreet')?.value || '').trim() || '';
   const street = (document.getElementById('regStreet')?.value || '').trim() || 'Holland Park';
   const city = (document.getElementById('regCity')?.value || '').trim() || 'London';
-  const postcode = (document.getElementById('regPostcode')?.value || '').trim() || 'W11 3TD';
+  const postcode = (document.getElementById('regPostcode')?.value || '').trim();
   const countryIso3 = document.getElementById('regCountryIso3')?.value || 'GBR';
-  const birthCountryIso3 = document.getElementById('regBirthCountryIso3')?.value || 'GBR';
+  const birthCountryIso3 = (document.getElementById('regBirthCountryIso3')?.value || '').trim();
   const isAhmed = email.toLowerCase().includes('ahmed');
 
   // 1A. Create / update Olowo account with ALL unified registration fields in one form (`POST /api/olowo/auth/register`)

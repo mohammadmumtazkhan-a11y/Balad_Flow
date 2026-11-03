@@ -282,15 +282,16 @@
 
             <div class="olowo-grid-3">
               <div class="olowo-field">
-                <label for="regGender">Gender <span class="req-star">*</span></label>
+                <label for="regGender">Gender</label>
                 <select id="regGender" class="olowo-input beige-fill">
+                  <option value="">Optional</option>
                   <option value="M" selected>Male</option>
                   <option value="F">Female</option>
                 </select>
               </div>
               <div class="olowo-field">
-                <label for="regDob">Date of Birth <span class="req-star">*</span></label>
-                <input type="date" id="regDob" class="olowo-input beige-fill" value="1975-05-02" required />
+                <label for="regDob">Date of Birth</label>
+                <input type="date" id="regDob" class="olowo-input beige-fill" value="1975-05-02" placeholder="Optional" />
               </div>
               <div class="olowo-field">
                 <label for="regBaseCurrency">Base currency</label>
@@ -346,8 +347,8 @@
                 <input type="text" id="regCity" class="olowo-input beige-fill" value="London" placeholder="Enter city" required />
               </div>
               <div class="olowo-field">
-                <label for="regPostcode">Postcode <span class="req-star">*</span></label>
-                <input type="text" id="regPostcode" class="olowo-input beige-fill" value="W11 3TD" placeholder="Enter postcode" required />
+                <label for="regPostcode">Postcode</label>
+                <input type="text" id="regPostcode" class="olowo-input beige-fill" value="W11 3TD" placeholder="Optional" />
               </div>
             </div>
 
@@ -360,8 +361,9 @@
                 </select>
               </div>
               <div class="olowo-field">
-                <label for="regBirthCountryIso3">Country of Birth <span class="req-star">*</span></label>
+                <label for="regBirthCountryIso3">Country of Birth</label>
                 <select id="regBirthCountryIso3" class="olowo-input beige-fill">
+                  <option value="">Optional</option>
                   <option value="GBR" selected>United Kingdom</option>
                   <option value="NGA">Nigeria</option>
                   <option value="FRA">France</option>

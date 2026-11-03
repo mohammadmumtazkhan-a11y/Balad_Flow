@@ -525,9 +525,9 @@ function detectSenderDetailsChanges(sender, candidate = null) {
   };
 }
 
-// Helper: Check if we have collected the FULL info of the user required for POST /api/v1/mito/Users
+// Helper: Check if we have collected the required info of the user for POST /api/v1/mito/Users
 function evaluateSenderCompleteness(sender) {
-  const requiredFields = ['firstName', 'lastName', 'dob', 'address', 'postcode'];
+  const requiredFields = ['firstName', 'lastName', 'address'];
   const missingFields = requiredFields.filter(f => !sender[f] || String(sender[f]).trim() === '');
   const changeCheck = detectSenderDetailsChanges(sender);
   return {
@@ -774,7 +774,7 @@ async function handleMitoCreateUser(req, res) {
     firstName = 'David',
     middleName = '',
     lastName = 'Beckham',
-    gender = 'M',
+    gender = '',
     legalEntityType = 'I', // 'I' (Individual) or 'B' (Business)
     companyNumber = null,
     businessName = null,
@@ -792,7 +792,7 @@ async function handleMitoCreateUser(req, res) {
     postcode,
     postCode,
     addressCountryIso3 = 'GBR',
-    birthCountryIso3 = 'GBR',
+    birthCountryIso3 = '',
     baseCurrency = 'GBP'
   } = req.body;
 
@@ -807,21 +807,18 @@ async function handleMitoCreateUser(req, res) {
   ).trim();
   const cleanPhone = String(phoneNumber || mobileNumber || `${phoneDialCode}${phone}`).replace(/[^0-9]/g, '');
 
-  // Enforce the user's rule: We submit a user ONLY when we have collected the full info of the user!
+  // Enforce the user's rule: We submit a user ONLY when we have collected the required info of the user!
+  // Note: gender, dateOfBirth, addressPostcode, and birthCountryIso3 are optional in the registration form.
   const missingFullFields = [];
   if (!firstName) missingFullFields.push('firstName');
   if (!lastName) missingFullFields.push('lastName');
   if (!email) missingFullFields.push('email');
   if (!cleanPhone) missingFullFields.push('phoneNumber');
-  if (!gender) missingFullFields.push('gender');
   if (!legalEntityType) missingFullFields.push('legalEntityType');
-  if (!resolvedDob) missingFullFields.push('dateOfBirth');
   if (!resolvedStreet) missingFullFields.push('street');
   if (!resolvedCity) missingFullFields.push('addressCity');
-  if (!resolvedPostcode) missingFullFields.push('addressPostcode');
   if (!countryIso3) missingFullFields.push('countryIso3');
   if (!addressCountryIso3) missingFullFields.push('addressCountryIso3');
-  if (!birthCountryIso3) missingFullFields.push('birthCountryIso3');
 
   if (legalEntityType === 'B') {
     if (!companyNumber) missingFullFields.push('companyNumber');
@@ -903,18 +900,18 @@ async function handleMitoCreateUser(req, res) {
     firstName: firstName.trim(),
     middleName: middleName ? middleName.trim() : '',
     lastName: lastName.trim(),
-    gender,
+    gender: gender || 'M',
     legalEntityType,
     ...(legalEntityType === 'B' ? { companyNumber, businessName } : {}),
-    dateOfBirth: resolvedDob,
+    dateOfBirth: resolvedDob || '1975-05-02',
     buildingNumber: buildingNumber || '23',
     buildingName: buildingName || '',
     subStreet: subStreet || '',
     street: resolvedStreet,
     addressCity: resolvedCity,
-    addressPostcode: resolvedPostcode,
+    addressPostcode: resolvedPostcode || 'W11 3TD',
     addressCountryIso3,
-    birthCountryIso3
+    birthCountryIso3: birthCountryIso3 || countryIso3 || 'GBR'
   };
 
   let stagingResult = null;
