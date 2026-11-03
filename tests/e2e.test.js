@@ -311,6 +311,127 @@ async function runE2ETests() {
     }
     console.log('   ✅ Passed: Dynamic userId rates, UpdateBeneficiary (UBA), Existing Beneficiary Selection & DeleteBeneficiary verified.\n');
 
+    // =========================================================================
+    // TEST 6: OPTIONAL REGISTRATION FIELDS & 3-STAGE HOSTED TRANSACTION FLOW
+    //         (KYC Link Loaded First -> Beneficiary Link -> Payment Link)
+    // =========================================================================
+    console.log('6️⃣  Testing Optional Registration Fields & 3-Stage Hosted Flow (KYC -> Beneficiary -> Payment)...');
+
+    // 6A. Create user omitting optional fields (gender, dob, postcode, birthCountryIso3, middleName)
+    const minEmail = `minimal.${Date.now()}@balad-remit.co.uk`;
+    const minUserRes = await fetch(`${baseUrl}/api/v1/mito/Users`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        legalEntityType: 'I',
+        firstName: 'Zainab',
+        lastName: 'Okafor',
+        email: minEmail,
+        phoneNumber: `4477${String(Date.now()).slice(-8)}`,
+        street: '10 Downing Street',
+        addressCity: 'London',
+        countryIso3: 'GBR',
+        addressCountryIso3: 'GBR'
+      })
+    }).then(r => r.json());
+    assert.strictEqual(minUserRes.code, 200, `Expected minimal user creation to succeed: ${JSON.stringify(minUserRes)}`);
+    assert.ok(minUserRes.data.userId, 'Minimal user should receive a valid userId');
+    assert.strictEqual(minUserRes.data.completeness.isComplete, true, 'Minimal user with only mandatory fields must be marked complete');
+    const minUserId = minUserRes.data.userId;
+
+    // 6B. Lock exchange rate & Initiate Hosted Transaction for unverified user (KYC required & no beneficiary selected)
+    const minRateRes = await fetch(`${baseUrl}/api/v1/mito/Exchange/rates`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: minUserId,
+        serviceCode: 'MONEYTRANSFER',
+        collectionMode: 'BANKACCOUNT',
+        fromCountry: 'GBR',
+        toCountry: 'NGA',
+        fromCurrency: 'GBP',
+        toCurrency: 'NGN',
+        amount: 150,
+        direction: 'S'
+      })
+    }).then(r => r.json());
+    assert.strictEqual(minRateRes.code, 200);
+    const minRateId = minRateRes.data.rateId;
+
+    const kycFlowTxRes = await fetch(`${baseUrl}/api/v1/mito/Transactions/InitiateHostedTransaction`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: minUserId,
+        rateId: minRateId,
+        sendAmount: 150,
+        sendCurrency: 'GBP',
+        receiveCurrency: 'NGN',
+        deliveryMethod: 'Account',
+        sourceOfFundCode: 'EMPLOYMENT',
+        reasonCode: 'FAMILYSUPPORT',
+        relationship: 'Sibling'
+      })
+    }).then(r => r.json());
+    assert.strictEqual(kycFlowTxRes.code, 200);
+    const kycTxId = kycFlowTxRes.data.transactionId;
+    assert.strictEqual(kycFlowTxRes.data.skipKycHostedStep, false, 'Unverified user must have skipKycHostedStep === false');
+    assert.ok(kycFlowTxRes.data.kycHostedUrl, 'Expected kycHostedUrl to be returned when KYC is required');
+    assert.ok(
+      kycFlowTxRes.data.transaction.rawRequiredAction.kyc && kycFlowTxRes.data.transaction.rawRequiredAction.kyc.link,
+      'Expected requiredAction.kyc.link to be populated first'
+    );
+    assert.strictEqual(kycFlowTxRes.data.skipBeneficiaryHostedStep, false, 'Expected skipBeneficiaryHostedStep === false when no beneficiaryId is provided');
+    assert.ok(kycFlowTxRes.data.beneficiaryHostedUrl, 'Expected beneficiaryHostedUrl to be returned');
+    assert.ok(kycFlowTxRes.data.paymentCheckoutUrl, 'Expected paymentCheckoutUrl to be returned');
+
+    // 6C. Test KYC Outcome: FAILED_RETRY_ALLOWED -> RETRY_KYC -> COMPLETED
+    const kycFailRetryRes = await fetch(`${baseUrl}/api/v1/mito/Transactions/KycOutcome`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ transactionId: kycTxId, outcome: 'FAILED_RETRY_ALLOWED' })
+    }).then(r => r.json());
+    assert.strictEqual(kycFailRetryRes.code, 200);
+    assert.strictEqual(kycFailRetryRes.data.kycStatus, 'FAILED');
+    assert.strictEqual(kycFailRetryRes.data.isRetryAllowed, true);
+
+    const kycRetryRes = await fetch(`${baseUrl}/api/v1/mito/Transactions/KycOutcome`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ transactionId: kycTxId, outcome: 'RETRY_KYC' })
+    }).then(r => r.json());
+    assert.strictEqual(kycRetryRes.code, 200);
+    assert.strictEqual(kycRetryRes.data.kycStatus, 'PENDING');
+
+    const kycCompleteRes = await fetch(`${baseUrl}/api/v1/mito/Transactions/KycOutcome`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ transactionId: kycTxId, outcome: 'COMPLETED' })
+    }).then(r => r.json());
+    assert.strictEqual(kycCompleteRes.code, 200);
+    assert.strictEqual(kycCompleteRes.data.kycStatus, 'COMPLETED');
+    assert.strictEqual(kycCompleteRes.data.nextStage, 'beneficiary', 'After KYC completes and beneficiary is needed, nextStage must be beneficiary');
+
+    // 6D. Complete Beneficiary Stage -> Transitions to Payment Stage
+    const benCompleteRes = await fetch(`${baseUrl}/api/v1/mito/Transactions/BeneficiaryOutcome`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ transactionId: kycTxId, outcome: 'COMPLETED' })
+    }).then(r => r.json());
+    assert.strictEqual(benCompleteRes.code, 200);
+    assert.strictEqual(benCompleteRes.data.beneficiaryStatus, 'COMPLETED');
+
+    // 6E. Complete Hosted Payment Stage
+    const payCompleteRes = await fetch(`${baseUrl}/api/v1/mito/Transactions/CompleteHostedPayment`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ transactionId: kycTxId, simulatedResult: 'SUCCESS' })
+    }).then(r => r.json());
+    assert.strictEqual(payCompleteRes.code, 200);
+    assert.strictEqual(payCompleteRes.data.paymentStatus, 'SUCCESS');
+    assert.strictEqual(payCompleteRes.data.paymentCase, 'SUCCESS');
+    console.log('   ✅ Passed: Optional registration fields & 3-stage KYC -> Beneficiary -> Payment hosted flow verified.\n');
+
     console.log('🎉 ALL BALAD × MITO E2E TESTS PASSED SUCCESSFULLY!');
   } finally {
     await new Promise(resolve => server.close(resolve));
