@@ -320,7 +320,7 @@ function findSenderByEmailOrId({ email, userId, senderId, olowoAccountId } = {})
 }
 
 function seedDefaultSenders() {
-  // 1. David Beckham — New Olowo User identified by email `mohammadmumtazkhan+24@example.com` and userId
+  // 1. David Beckham — New Olowo User identified by email `mohammadmumtazkhan+24@gmail.com` and userId
   //    (Only basic Olowo registration fields initially; once KYC passes, identified by email + userId so KYC won't repeat unless address/details change!)
   const s1 = {
     userId: 'OLW-LOCAL-928C',
@@ -333,7 +333,7 @@ function seedDefaultSenders() {
     firstName: 'David',
     middleName: '',
     lastName: 'Beckham',
-    email: 'mohammadmumtazkhan+24@example.com',
+    email: 'mohammadmumtazkhan+24@gmail.com',
     phoneDialCode: '+44',
     phone: '7553039222',
     phoneNumber: '+447553039222',
@@ -595,7 +595,7 @@ app.post('/api/olowo/auth/register', (req, res) => {
     firstName: reqFirstName,
     middleName = '',
     lastName: reqLastName,
-    email = 'mohammadmumtazkhan+24@example.com',
+    email = 'mohammadmumtazkhan+24@gmail.com',
     phoneDialCode = '+44',
     phone = '7553039222',
     baseCurrency = 'GBP',
@@ -766,7 +766,7 @@ async function handleMitoCreateUser(req, res) {
     olowoAccountId,
     senderId: existingLocalId,
     countryIso3 = 'GBR',
-    email = 'mohammadmumtazkhan+24@example.com',
+    email = 'mohammadmumtazkhan+24@gmail.com',
     phoneNumber,
     mobileNumber,
     phone = '7553039222',
@@ -889,13 +889,10 @@ async function handleMitoCreateUser(req, res) {
   const kycInvalidatedByChange = prevSender.kycStatus === 'PASSED' && changeCheck.hasChanged;
 
   // Build exact 18-field MITO Staging payload for POST /api/v1/mito/Users
-  const uniqueEmailForStaging = email.includes('@')
-    ? email.replace('@', `+mito${Date.now().toString().slice(-5)}@`)
-    : `david.beckham.${Date.now()}@olowo.app`;
-
-  const mitoUserPayload = {
+  const trimmedEmail = String(email || '').trim();
+  const buildMitoUserPayload = targetEmail => ({
     countryIso3,
-    email: uniqueEmailForStaging,
+    email: targetEmail,
     phoneNumber: cleanPhone,
     firstName: firstName.trim(),
     middleName: middleName ? middleName.trim() : '',
@@ -909,10 +906,13 @@ async function handleMitoCreateUser(req, res) {
     subStreet: subStreet || '',
     street: resolvedStreet,
     addressCity: resolvedCity,
-    addressPostcode: resolvedPostcode || 'W11 3TD',
+    addressPostcode: resolvedPostcode || 'W11 3TH',
     addressCountryIso3,
     birthCountryIso3: birthCountryIso3 || countryIso3 || 'GBR'
-  };
+  });
+
+  let stagingEmailUsed = trimmedEmail || `david.beckham.${Date.now()}@olowo.app`;
+  const mitoUserPayload = buildMitoUserPayload(stagingEmailUsed);
 
   let stagingResult = null;
   let realMitoUserId = null;
@@ -921,6 +921,14 @@ async function handleMitoCreateUser(req, res) {
     stagingResult = await callMitoStagingApi('POST', '/Users', mitoUserPayload);
     if (stagingResult.ok && stagingResult.data && stagingResult.data.data && stagingResult.data.data.userId) {
       realMitoUserId = stagingResult.data.data.userId;
+    } else if (stagingResult && !stagingResult.ok && trimmedEmail.includes('@')) {
+      // If this exact email was already registered on MITO Staging in an earlier run, retry with a unique tag so we still get a live MITO userId
+      stagingEmailUsed = trimmedEmail.replace('@', `.r${Date.now().toString().slice(-4)}@`);
+      const retryStaging = await callMitoStagingApi('POST', '/Users', buildMitoUserPayload(stagingEmailUsed));
+      if (retryStaging.ok && retryStaging.data && retryStaging.data.data && retryStaging.data.data.userId) {
+        stagingResult = retryStaging;
+        realMitoUserId = retryStaging.data.data.userId;
+      }
     }
   } catch (err) {
     stagingResult = { ok: false, error: err.message };
@@ -938,8 +946,8 @@ async function handleMitoCreateUser(req, res) {
     olowoAccountId: prevSender.olowoAccountId || olowoAccountId || existingLocalId || `OLW-${crypto.randomBytes(3).toString('hex').toUpperCase()}`,
     isSubmittedToMito: true,
     countryIso3,
-    email: String(email).trim(),
-    stagingEmail: uniqueEmailForStaging,
+    email: trimmedEmail,
+    stagingEmail: stagingEmailUsed,
     phoneNumber: cleanPhone,
     phoneDialCode,
     phone: String(phone).replace(/^\+44\s*/, '').trim(),

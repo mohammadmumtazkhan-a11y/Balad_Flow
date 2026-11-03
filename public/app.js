@@ -13,18 +13,19 @@ const STATE = {
     firstName: 'David',
     lastName: 'Beckham',
     screenName: 'David',
-    email: 'mohammadmumtazkhan+24@example.com',
+    email: 'mohammadmumtazkhan+24@gmail.com',
     phoneDialCode: '+44',
     phone: '7553039222',
     baseCurrency: 'GBP',
     dob: '',
     address: '',
     city: '',
-    postcode: '',
+    postcode: 'W11 3TH',
     country: 'GB',
     kycStatus: 'NOT_STARTED',
     kycTier: 'NONE'
   },
+  davidEmailSeq: 24,
 
   // Step 2: Rate Check & Noted Corridor
   corridorCode: 'GBP-NGN',
@@ -271,6 +272,7 @@ function switchHighLevelFlowMode(mode) {
     jumpToView('login');
   } else {
     fillRegistrationPreset('david_incomplete', true);
+    const activeDavidEmail = document.getElementById('regEmail')?.value || getCurrentDavidPresetEmail();
     STATE.sender = {
       senderId: '',
       userId: '',
@@ -278,7 +280,7 @@ function switchHighLevelFlowMode(mode) {
       firstName: 'David',
       lastName: 'Beckham',
       screenName: 'David',
-      email: 'mohammadmumtazkhan+24@example.com',
+      email: activeDavidEmail,
       phoneDialCode: '+44',
       phone: '7553039222',
       baseCurrency: 'GBP',
@@ -287,7 +289,7 @@ function switchHighLevelFlowMode(mode) {
       street: 'Holland Park',
       address: '23 Holland Park',
       city: 'London',
-      postcode: 'W11 3TD',
+      postcode: 'W11 3TH',
       country: 'GB',
       countryIso3: 'GBR',
       birthCountryIso3: 'GBR',
@@ -452,6 +454,46 @@ function syncRegFullNameFromParts() {
   }
 }
 
+const DAVID_EMAIL_SEQ_STORAGE_KEY = 'balad_david_email_seq';
+
+function getCurrentDavidEmailSeq() {
+  try {
+    const raw = localStorage.getItem(DAVID_EMAIL_SEQ_STORAGE_KEY);
+    const parsed = parseInt(raw, 10);
+    if (!Number.isNaN(parsed) && parsed >= 24) {
+      STATE.davidEmailSeq = parsed;
+      return parsed;
+    }
+  } catch (_) {}
+  return STATE.davidEmailSeq || 24;
+}
+
+function getCurrentDavidPresetEmail() {
+  return `mohammadmumtazkhan+${getCurrentDavidEmailSeq()}@gmail.com`;
+}
+
+function advanceDavidPresetEmailSequence(submittedEmail = '') {
+  let seq = getCurrentDavidEmailSeq();
+  const match = String(submittedEmail || '').match(/mohammadmumtazkhan\+(\d+)@/i);
+  if (match && match[1]) {
+    const submittedSeq = parseInt(match[1], 10);
+    if (!Number.isNaN(submittedSeq) && submittedSeq >= seq) {
+      seq = submittedSeq;
+    }
+  }
+  const nextSeq = seq + 1;
+  STATE.davidEmailSeq = nextSeq;
+  try {
+    localStorage.setItem(DAVID_EMAIL_SEQ_STORAGE_KEY, String(nextSeq));
+  } catch (_) {}
+  const nextEmail = `mohammadmumtazkhan+${nextSeq}@gmail.com`;
+  const regEmailEl = document.getElementById('regEmail');
+  if (regEmailEl && STATE.presetMode !== 'ahmed_complete') {
+    regEmailEl.value = nextEmail;
+  }
+  return nextEmail;
+}
+
 function fillRegistrationPreset(presetKey, skipViewSwitch = false) {
   document.querySelectorAll('.preset-chip').forEach(btn => {
     const dp = btn.getAttribute('data-preset');
@@ -488,10 +530,11 @@ function fillRegistrationPreset(presetKey, skipViewSwitch = false) {
       switchHighLevelFlowMode('EXISTING_USER');
     }
   } else {
+    const currentDavidEmail = getCurrentDavidPresetEmail();
     setVal('regFirstName', 'David');
     setVal('regLastName', 'Beckham');
     setVal('regFullName', 'David Beckham');
-    setVal('regEmail', 'mohammadmumtazkhan+24@example.com');
+    setVal('regEmail', currentDavidEmail);
     setVal('regDialCode', '+44');
     setVal('regPhone', '7553039222');
     setVal('regGender', 'M');
@@ -502,7 +545,7 @@ function fillRegistrationPreset(presetKey, skipViewSwitch = false) {
     setVal('regSubStreet', '');
     setVal('regStreet', 'Holland Park');
     setVal('regCity', 'London');
-    setVal('regPostcode', 'W11 3TD');
+    setVal('regPostcode', 'W11 3TH');
     setVal('regCountryIso3', 'GBR');
     setVal('regBirthCountryIso3', 'GBR');
     STATE.presetMode = 'david_incomplete';
@@ -520,7 +563,7 @@ async function handleRegisterSubmit(event) {
   const middleName = '';
   const lastName = (document.getElementById('regLastName')?.value || '').trim() || 'Beckham';
   const fullName = (document.getElementById('regFullName')?.value || '').trim() || `${firstName} ${lastName}`.trim();
-  const email = (document.getElementById('regEmail')?.value || '').trim() || 'mohammadmumtazkhan+24@example.com';
+  const email = (document.getElementById('regEmail')?.value || '').trim() || getCurrentDavidPresetEmail();
   const phoneDialCode = document.getElementById('regDialCode')?.value || '+44';
   const rawPhone = (document.getElementById('regPhone')?.value || '').replace(/^\+44\s*/, '').trim() || '7553039222';
   const gender = (document.getElementById('regGender')?.value || '').trim();
@@ -615,6 +658,11 @@ async function handleRegisterSubmit(event) {
       createUserRes.data.data.mitoUserId ||
       createUserRes.data.data.senderId ||
       STATE.senderId;
+  }
+
+  // Advance David Beckham's registration email sequence by +1 (`+24` -> `+25` -> `+26` ...) so the next registration submission uses a brand-new email!
+  if (!isAhmed) {
+    advanceDavidPresetEmailSequence(email);
   }
 
   STATE.flowMode = isAhmed ? 'EXISTING_USER' : 'NEW_USER';
@@ -1505,7 +1553,7 @@ function saveLinkedProfileChanges() {
 }
 
 async function saveSenderAddressAndOpenMitoKyc() {
-  const email = document.getElementById('senderEmailInput').value.trim() || STATE.sender.email || 'mohammadmumtazkhan+24@example.com';
+  const email = document.getElementById('senderEmailInput').value.trim() || STATE.sender.email || getCurrentDavidPresetEmail();
   const phoneEl = document.getElementById('senderPhoneFullInput');
   const phoneNumber = (phoneEl && phoneEl.value.trim()) || `${STATE.sender.phoneDialCode || '+44'}${STATE.sender.phone || '7553039222'}`;
   const firstName = document.getElementById('senderFirstNameInput').value.trim() || 'David';
@@ -1526,7 +1574,7 @@ async function saveSenderAddressAndOpenMitoKyc() {
   const subStreet = document.getElementById('senderAddress2Input').value.trim() || '';
   const street = document.getElementById('senderAddress1Input').value.trim() || 'Holland Park';
   const addressCity = document.getElementById('senderCityInput').value.trim() || 'London';
-  const addressPostcode = document.getElementById('senderPostcodeInput').value.trim() || 'W11 3TD';
+  const addressPostcode = document.getElementById('senderPostcodeInput').value.trim() || 'W11 3TH';
   const countryIso3 = document.getElementById('senderCountryInput').value || 'GBR';
   const birthCountryEl = document.getElementById('senderBirthCountryInput');
   const birthCountryIso3 = (birthCountryEl && birthCountryEl.value) || 'GBR';
@@ -1628,7 +1676,7 @@ async function executeMitoKycNow() {
     dob: document.getElementById('senderDobInput').value.trim() || STATE.sender.dob || '1975-05-02',
     address: document.getElementById('senderAddress1Input').value.trim() || STATE.sender.address || '23 Holland Park',
     city: document.getElementById('senderCityInput').value.trim() || STATE.sender.city || 'London',
-    postcode: document.getElementById('senderPostcodeInput').value.trim() || STATE.sender.postcode || 'W11 3TD',
+    postcode: document.getElementById('senderPostcodeInput').value.trim() || STATE.sender.postcode || 'W11 3TH',
     sendAmount: STATE.sendAmount,
     sendCurrency: STATE.sendCurrency,
     simulatedOutcome: STATE.simulatedKycOutcome,
@@ -2173,7 +2221,7 @@ function populateSummaryView() {
   document.getElementById('sumSenderEmail').textContent = STATE.sender.email;
   document.getElementById('sumSenderPhone').textContent = `${STATE.sender.phoneDialCode || '+44'} ${STATE.sender.phone}`;
   document.getElementById('sumSenderAddress').textContent =
-    `${STATE.sender.address || '23 Holland Park'}, ${STATE.sender.city || 'London'}, ${STATE.sender.postcode || 'W11 3TD'}, United Kingdom`;
+    `${STATE.sender.address || '23 Holland Park'}, ${STATE.sender.city || 'London'}, ${STATE.sender.postcode || 'W11 3TH'}, United Kingdom`;
 
   const accStr = String((ben.fields && (ben.fields.accountNumber || ben.fields.iban)) || '1018316888');
   document.getElementById('sumBenName').textContent =
@@ -4725,5 +4773,6 @@ window.addEventListener('DOMContentLoaded', async () => {
   }
 
   refreshDashboardHeader();
+  fillRegistrationPreset('david_incomplete', true);
   jumpToView('register');
 });
