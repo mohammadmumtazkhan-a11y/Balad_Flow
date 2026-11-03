@@ -2544,15 +2544,22 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
   const paymentAction = (rawRequiredAction && rawRequiredAction.payment) || null;
   const beneficiaryAction = (rawRequiredAction && rawRequiredAction.beneficiary) || null;
   const kycAction = (rawRequiredAction && rawRequiredAction.kyc) || null;
-  // Never expose or trigger KYC Hosted Page — flow goes directly Beneficiary -> Payment (or straight to Payment if existing beneficiary selected)
-  const requiredAction = {
-    kyc: null,
-    beneficiary: beneficiaryAction,
-    payment: paymentAction
-  };
-  if (liveTxData && liveTxData.requiredAction) {
-    liveTxData.requiredAction.kyc = null;
-  }
+
+  // Determine whether KYC Hosted Step is required for this transaction:
+  // - If caller passes `forceKyc: true`, OR if sender's KYC has not yet passed (`sender.kycStatus !== 'PASSED'`), OR if sender details changed since KYC,
+  //   OR if MITO Staging returned a `kyc` link for an unverified sender -> include `requiredAction.kyc` with its link so KYC loads FIRST!
+  // - If sender's KYC is already `PASSED` and unchanged (and transfer doesn't require an uncompleted Extended KYC upgrade), `skipKycHostedStep = true` (`requiredAction.kyc = null`).
+  const completenessCheck = evaluateSenderCompleteness(sender);
+  const needsExtendedUpgradeForTx =
+    Number(lockedRate.sendAmount) >= EXTENDED_KYC_THRESHOLD_GBP &&
+    sender.kycTier !== 'EXTENDED_KYC' &&
+    sender.kycTier !== 'MANUAL_ADMIN_KYC';
+  const isSenderAlreadyKycVerified =
+    sender.kycStatus === 'PASSED' &&
+    !completenessCheck.hasDetailsChangedSinceKyc &&
+    !needsExtendedUpgradeForTx &&
+    req.body.forceKyc !== true;
+  const skipKycHostedStep = Boolean(isSenderAlreadyKycVerified);
 
   const paymentRawLink =
     (paymentAction && paymentAction.link) ||
@@ -2577,15 +2584,51 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
   const beneficiaryLink = beneficiaryDirectUrl;
   const beneficiaryHostedUrl = beneficiaryDirectUrl;
 
+  const kycRawLink =
+    (kycAction && kycAction.link) ||
+    `https://mito-checkout-1cca8e18297e.herokuapp.com/user-verification?journeyCode=${encodeURIComponent((kycAction && kycAction.journeyCode) || paymentJourneyCode)}`;
+  const kycJourneyCode =
+    (kycAction && kycAction.journeyCode) ||
+    (kycRawLink.match(/journeyCode=([^&]+)/) ? kycRawLink.match(/journeyCode=([^&]+)/)[1] : paymentJourneyCode);
+  const kycDirectUrl =
+    (kycAction && kycAction.link) ||
+    `https://mito-checkout-1cca8e18297e.herokuapp.com/user-verification?journeyCode=${encodeURIComponent(kycJourneyCode)}`;
+  const kycQrUrl = `https://mito-checkout-1cca8e18297e.herokuapp.com/?journeyCode=${encodeURIComponent(kycJourneyCode)}&isQRcode=true`;
+  const kycLink = kycDirectUrl;
+  const kycHostedUrl = kycDirectUrl;
+
   const skipBeneficiaryHostedStep = Boolean(beneficiary && beneficiary.beneficiaryId);
-  // If an existing beneficiary was selected, primary journeyCode is paymentJourneyCode; otherwise beneficiaryJourneyCode!
-  const journeyCode = skipBeneficiaryHostedStep ? paymentJourneyCode : beneficiaryJourneyCode || paymentJourneyCode;
+  // Primary initial journeyCode: KYC first (if required), else Beneficiary (if required), else Payment!
+  const journeyCode = !skipKycHostedStep
+    ? kycJourneyCode || beneficiaryJourneyCode || paymentJourneyCode
+    : skipBeneficiaryHostedStep
+    ? paymentJourneyCode
+    : beneficiaryJourneyCode || paymentJourneyCode;
   const linkToken =
+    (!skipKycHostedStep && kycAction && kycAction.linkToken) ||
     (skipBeneficiaryHostedStep && paymentAction && paymentAction.linkToken) ||
     (beneficiaryAction && beneficiaryAction.linkToken) ||
     (paymentAction && paymentAction.linkToken) ||
     (liveTxData && liveTxData.linkToken) ||
     null;
+
+  const requiredActionKyc = skipKycHostedStep
+    ? null
+    : kycAction
+    ? {
+        ...kycAction,
+        link: kycRawLink,
+        qrCodeLink: kycQrUrl,
+        directKycLink: kycDirectUrl
+      }
+    : {
+        journeyCode: kycJourneyCode,
+        link: kycRawLink,
+        qrCodeLink: kycQrUrl,
+        directKycLink: kycDirectUrl,
+        linkToken,
+        status: 'Pending'
+      };
 
   const requiredActionBeneficiary = skipBeneficiaryHostedStep
     ? null
@@ -2604,10 +2647,37 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
         status: 'Pending'
       };
 
+  const requiredActionPaymentOnly = paymentAction
+    ? {
+        ...paymentAction,
+        qrCodeLink: paymentQrUrl,
+        directCheckoutLink: paymentDirectUrl
+      }
+    : {
+        journeyCode: paymentJourneyCode,
+        link: paymentRawLink,
+        qrCodeLink: paymentQrUrl,
+        directCheckoutLink: paymentDirectUrl,
+        linkToken,
+        status: 'Pending'
+      };
+
+  const requiredAction = {
+    kyc: requiredActionKyc,
+    beneficiary: requiredActionBeneficiary,
+    payment: requiredActionPaymentOnly
+  };
+
   const selectedBenFullName =
     beneficiary && beneficiary.fields
       ? beneficiary.fields.fullName || `${beneficiary.fields.firstName || ''} ${beneficiary.fields.lastName || ''}`.trim()
       : null;
+
+  const initialStageLabel = !skipKycHostedStep
+    ? 'kyc (requiredAction.kyc.link loaded first -> then Beneficiary -> then Payment)'
+    : skipBeneficiaryHostedStep
+    ? 'payment (KYC verified & existing beneficiary selected -> loaded requiredAction.payment.link)'
+    : 'beneficiary (KYC already verified -> loaded requiredAction.beneficiary.link -> then Payment)';
 
   const txRecord = {
     transactionId,
@@ -2615,6 +2685,7 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
     reference,
     partnerReferenceNumber: (liveTxData && liveTxData.partnerReferenceNumber) || partnerReferenceNumber,
     journeyCode,
+    kycJourneyCode,
     beneficiaryJourneyCode,
     paymentJourneyCode,
     linkToken,
@@ -2628,6 +2699,7 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
     beneficiaryId: beneficiary ? beneficiary.beneficiaryId : null,
     beneficiaryName: selectedBenFullName || null,
     beneficiaryAccountNumber: (beneficiary && beneficiary.fields && beneficiary.fields.accountNumber) || null,
+    skipKycHostedStep,
     skipBeneficiaryHostedStep,
     providerId: realProviderId,
     providerName: matchedProviderObj.name,
@@ -2645,6 +2717,13 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
     exchangeRate: lockedRate.exchangeRate,
     totalCommission: lockedRate.totalCommission,
     totalPayable: lockedRate.totalPayable,
+    kycRawLink,
+    kycQrUrl,
+    kycLink,
+    kycHostedUrl,
+    kycDirectUrl,
+    kycStatus: skipKycHostedStep ? 'COMPLETED' : 'PENDING',
+    isKycRetryAllowed: true,
     beneficiaryRawLink,
     beneficiaryQrUrl,
     beneficiaryLink,
@@ -2657,24 +2736,10 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
     paymentDirectUrl,
     paymentUrl,
     paymentCheckoutUrl,
-    loadedActionType: skipBeneficiaryHostedStep
-      ? 'payment (existing beneficiary selected -> skipped beneficiary step -> loaded requiredAction.payment.link)'
-      : 'beneficiary (requiredAction.beneficiary.link -> QR & Direct Form)',
+    loadedActionType: initialStageLabel,
+    requiredActionKyc,
     requiredActionBeneficiary,
-    requiredActionPaymentOnly: paymentAction
-      ? {
-          ...paymentAction,
-          qrCodeLink: paymentQrUrl,
-          directCheckoutLink: paymentDirectUrl
-        }
-      : {
-          journeyCode: paymentJourneyCode,
-          link: paymentRawLink,
-          qrCodeLink: paymentQrUrl,
-          directCheckoutLink: paymentDirectUrl,
-          linkToken,
-          status: 'Pending'
-        },
+    requiredActionPaymentOnly,
     rawRequiredAction: requiredAction,
     redirectUrl: resolvedRedirectUrl,
     paymentStatus: (liveTxData && liveTxData.status) || 'NEW',
@@ -2686,9 +2751,11 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
   res.json({
     code: 200,
     responseType: 'Success',
-    message: skipBeneficiaryHostedStep
-      ? `Hosted Transaction initiated with existing beneficiary '${selectedBenFullName}' (${beneficiary.beneficiaryId})! Skipped adding beneficiary details and loaded Payment link (${paymentDirectUrl}) directly.`
-      : `Hosted Transaction initiated via POST /api/v1/mito/Transactions/InitiateHostedTransaction (beneficiary key omitted)! Loaded requiredAction.beneficiary link (${beneficiaryDirectUrl}).`,
+    message: !skipKycHostedStep
+      ? `Hosted Transaction initiated via POST /api/v1/mito/Transactions/InitiateHostedTransaction! KYC link returned in requiredAction.kyc (${kycDirectUrl}) — loading KYC first, followed by ${skipBeneficiaryHostedStep ? 'Payment' : 'Beneficiary -> Payment'}.`
+      : skipBeneficiaryHostedStep
+      ? `Hosted Transaction initiated with existing beneficiary '${selectedBenFullName}' (${beneficiary.beneficiaryId})! Skipped KYC & Beneficiary and loaded Payment link (${paymentDirectUrl}) directly.`
+      : `Hosted Transaction initiated via POST /api/v1/mito/Transactions/InitiateHostedTransaction! KYC already verified — loaded requiredAction.beneficiary link (${beneficiaryDirectUrl}).`,
     stagingCall: stagingResult,
     data: {
       transactionId,
@@ -2696,6 +2763,7 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
       reference,
       partnerReferenceNumber: txRecord.partnerReferenceNumber,
       journeyCode,
+      kycJourneyCode,
       beneficiaryJourneyCode,
       paymentJourneyCode,
       linkToken,
@@ -2703,9 +2771,15 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
       beneficiaryId: txRecord.beneficiaryId,
       beneficiaryName: txRecord.beneficiaryName,
       beneficiaryAccountNumber: txRecord.beneficiaryAccountNumber,
+      skipKycHostedStep,
       skipBeneficiaryHostedStep,
       providerId: realProviderId,
       providerName: matchedProviderObj.name,
+      kycRawLink,
+      kycQrUrl,
+      kycLink,
+      kycHostedUrl,
+      kycDirectUrl,
       beneficiaryRawLink,
       beneficiaryQrUrl,
       beneficiaryLink,
@@ -2717,6 +2791,7 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
       paymentUrl,
       paymentCheckoutUrl,
       requiredAction,
+      requiredActionKyc,
       requiredActionBeneficiary,
       requiredActionPayment: txRecord.requiredActionPaymentOnly,
       redirectUrl: resolvedRedirectUrl,
@@ -2846,6 +2921,92 @@ function handleMitoRedirectCallback(req, res) {
   const tx = findTransactionByQuery(req.query);
   const rawOrderStatus = String(req.query.orderStatus || req.query.status || '').trim().toUpperCase();
   const reqJourneyCode = String(req.query.journeyCode || '').trim();
+  const isKycCallback =
+    rawOrderStatus === 'KYCCOMPLETED' ||
+    rawOrderStatus === 'KYCPASSED' ||
+    rawOrderStatus === 'KYCUNDERREVIEW' ||
+    rawOrderStatus === 'KYCREJECTED' ||
+    rawOrderStatus === 'KYCFAILED' ||
+    (tx && reqJourneyCode && reqJourneyCode === tx.kycJourneyCode && tx.kycStatus === 'PENDING');
+
+  if (isKycCallback && tx) {
+    const isKycFailed =
+      rawOrderStatus === 'FAILED' ||
+      rawOrderStatus === 'KYCFAILED' ||
+      rawOrderStatus === 'KYCREJECTED' ||
+      rawOrderStatus === 'CANCELLED' ||
+      rawOrderStatus === 'CANCELED' ||
+      rawOrderStatus === 'EXPIRED';
+    const isKycUnderReview = rawOrderStatus === 'KYCUNDERREVIEW' || rawOrderStatus === 'UNDERREVIEW' || rawOrderStatus === 'INREVIEW';
+
+    if (isKycFailed) {
+      tx.kycStatus = 'FAILED';
+      tx.kycFailureReason = `KYC journey (${reqJourneyCode || tx.kycJourneyCode}) returned ${rawOrderStatus}.`;
+      tx.isKycRetryAllowed = rawOrderStatus !== 'KYCREJECTED' && rawOrderStatus !== 'BLOCKED';
+    } else if (isKycUnderReview) {
+      tx.kycStatus = 'UNDER_REVIEW';
+      const sender = findSenderByEmailOrId({ userId: tx.userId, senderId: tx.senderId });
+      if (sender) {
+        sender.kycStatus = 'UNDER_REVIEW';
+        upsertSenderRecord(sender);
+      }
+    } else {
+      tx.kycStatus = 'COMPLETED';
+      const sender = findSenderByEmailOrId({ userId: tx.userId, senderId: tx.senderId });
+      if (sender) {
+        sender.kycStatus = 'PASSED';
+        sender.kycTier = Number(tx.sendAmount) >= EXTENDED_KYC_THRESHOLD_GBP ? 'EXTENDED_KYC' : 'MINI_KYC';
+        sender.verifiedProfileSnapshot = buildVerifiedProfileSnapshot(sender);
+        upsertSenderRecord(sender);
+      }
+    }
+
+    const nextStageAfterKyc = tx.skipBeneficiaryHostedStep || !tx.requiredActionBeneficiary ? 'payment' : 'beneficiary';
+    if (req.query.format === 'json') {
+      return res.json({
+        code: 200,
+        responseType: 'Success',
+        message: isKycFailed
+          ? `KYC journey failed (${rawOrderStatus}) — showing KYC status page.`
+          : `KYC ${tx.kycStatus}! Showing status page before transitioning to ${nextStageAfterKyc} stage.`,
+        data: {
+          kycStatus: tx.kycStatus,
+          isKycRetryAllowed: tx.isKycRetryAllowed,
+          nextStage: nextStageAfterKyc,
+          requiredActionBeneficiary: tx.requiredActionBeneficiary,
+          requiredActionPayment: tx.requiredActionPaymentOnly,
+          transaction: tx
+        }
+      });
+    }
+
+    return res.send(`<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>MITO KYC Status Captured</title></head>
+<body style="font-family:sans-serif;text-align:center;padding:40px;background:#f8fafc;color:#0f172a;">
+  <script>
+    try {
+      var callbackPayload = {
+        type: 'BALAD_KYC_CALLBACK',
+        status: ${JSON.stringify(tx.kycStatus)},
+        orderStatus: ${JSON.stringify(rawOrderStatus || 'KYCCOMPLETED')},
+        isRetryAllowed: ${JSON.stringify(Boolean(tx.isKycRetryAllowed))},
+        failureReason: ${JSON.stringify(tx.kycFailureReason || '')},
+        transactionId: ${JSON.stringify(tx.transactionId)},
+        nextStage: ${JSON.stringify(nextStageAfterKyc)},
+        requiredActionBeneficiary: ${JSON.stringify(tx.requiredActionBeneficiary || null)},
+        requiredActionPayment: ${JSON.stringify(tx.requiredActionPaymentOnly || null)}
+      };
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage(callbackPayload, '*');
+      }
+    } catch (e) {}
+  </script>
+  <h3>${isKycFailed ? 'KYC Verification Incomplete — Opening Status Page...' : '✓ KYC Status Captured — Transitioning to Next Step...'}</h3>
+</body>
+</html>`);
+  }
+
   const isBeneficiaryCallback =
     rawOrderStatus === 'BENEFICIARYCOMPLETED' ||
     (tx && reqJourneyCode && reqJourneyCode === tx.beneficiaryJourneyCode && reqJourneyCode !== tx.paymentJourneyCode) ||
@@ -2992,6 +3153,244 @@ app.get('/api/v1/mito/Transactions/:id/live-status', async (req, res) => {
   } catch (err) {
     res.status(500).json({ code: 500, responseType: 'Error', message: err.message });
   }
+});
+
+// Check live KYC Journey status (`requiredAction.kyc`) and determine whether to transition to Beneficiary / Payment or show KYC Status Page
+app.get('/api/v1/mito/Transactions/:id/kyc-status', async (req, res) => {
+  const tx = findTransactionByQuery({ transactionId: req.params.id, journeyCode: req.params.id });
+  if (!tx) {
+    return res.status(404).json({ code: 404, responseType: 'Error', message: 'Transaction not found.' });
+  }
+  const kycJc = tx.kycJourneyCode || tx.journeyCode;
+  let liveJourney = null;
+  try {
+    const tokRes = await fetch(`${MITO_STAGING_CONFIG.baseUrl}/auth/Token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ApiKey: 'd2783dc0-0ebc-4980-98ec-6203215f81ec' },
+      body: JSON.stringify({ journeyCode: kycJc })
+    }).then(r => r.json());
+    const token = tokRes && tokRes.data && tokRes.data.token ? tokRes.data.token : null;
+    const headers = {
+      ApiKey: 'd2783dc0-0ebc-4980-98ec-6203215f81ec',
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    };
+    const jRes = await fetch(`${MITO_STAGING_CONFIG.baseUrl}/Journey/status?journeyCode=${encodeURIComponent(kycJc)}`, { headers }).then(r => r.json());
+    liveJourney = jRes && jRes.data ? jRes.data : null;
+
+    if (liveJourney) {
+      const jStatus = String(liveJourney.journeyStatus || '').trim().toUpperCase();
+      const oStatus = String(liveJourney.orderStatus || '').trim().toUpperCase();
+      const kycMod = (liveJourney.modules || []).find(
+        m => {
+          const mCode = String(m.journeyModuleCode || m.moduleName || '').toLowerCase();
+          return mCode.includes('kyc') || mCode.includes('verification') || mCode.includes('identity') || mCode.includes('user');
+        }
+      );
+      const mStatus = kycMod ? String(kycMod.moduleStatus || '').trim().toUpperCase() : '';
+
+      if (
+        jStatus === 'COMPLETED' ||
+        jStatus === 'APPROVED' ||
+        oStatus === 'KYCCOMPLETED' ||
+        mStatus === 'COMPLETED' ||
+        mStatus === 'APPROVED'
+      ) {
+        tx.kycStatus = 'COMPLETED';
+        const sender = findSenderByEmailOrId({ userId: tx.userId, senderId: tx.senderId });
+        if (sender) {
+          sender.kycStatus = 'PASSED';
+          sender.kycTier = Number(tx.sendAmount) >= EXTENDED_KYC_THRESHOLD_GBP ? 'EXTENDED_KYC' : 'MINI_KYC';
+          sender.verifiedProfileSnapshot = buildVerifiedProfileSnapshot(sender);
+          upsertSenderRecord(sender);
+        }
+      } else if (
+        jStatus === 'UNDERREVIEW' ||
+        jStatus === 'INREVIEW' ||
+        mStatus === 'UNDERREVIEW' ||
+        mStatus === 'INREVIEW'
+      ) {
+        tx.kycStatus = 'UNDER_REVIEW';
+      } else if (
+        jStatus === 'FAILED' ||
+        jStatus === 'CANCELLED' ||
+        jStatus === 'EXPIRED' ||
+        mStatus === 'FAILED' ||
+        mStatus === 'CANCELLED' ||
+        mStatus === 'EXPIRED'
+      ) {
+        tx.kycStatus = 'FAILED';
+        tx.kycFailureReason = `MITO KYC Journey (${kycJc}) status is ${mStatus || jStatus}.`;
+        tx.isKycRetryAllowed = true;
+      }
+    }
+  } catch (_) {}
+
+  const nextStage = tx.skipBeneficiaryHostedStep || !tx.requiredActionBeneficiary ? 'payment' : 'beneficiary';
+  res.json({
+    code: 200,
+    responseType: 'Success',
+    data: {
+      transactionId: tx.transactionId,
+      kycJourneyCode: kycJc,
+      beneficiaryJourneyCode: tx.beneficiaryJourneyCode,
+      paymentJourneyCode: tx.paymentJourneyCode,
+      kycStatus: tx.kycStatus || 'PENDING',
+      isCompleted: tx.kycStatus === 'COMPLETED',
+      isUnderReview: tx.kycStatus === 'UNDER_REVIEW',
+      isFailed: tx.kycStatus === 'FAILED',
+      isRetryAllowed: tx.isKycRetryAllowed !== false,
+      failureReason: tx.kycFailureReason || null,
+      nextStage,
+      skipBeneficiaryHostedStep: Boolean(tx.skipBeneficiaryHostedStep),
+      requiredActionBeneficiary: tx.requiredActionBeneficiary || null,
+      requiredActionPayment: tx.requiredActionPaymentOnly || null,
+      beneficiaryDirectUrl: tx.beneficiaryDirectUrl,
+      paymentDirectUrl: tx.paymentDirectUrl,
+      liveJourney
+    }
+  });
+});
+
+// Handle KYC Completion, Under Review, Failure (with/without Retry Allowed), or Retry
+app.post('/api/v1/mito/Transactions/KycOutcome', (req, res) => {
+  const {
+    transactionId,
+    outcome = 'COMPLETED', // 'COMPLETED' | 'UNDER_REVIEW' | 'FAILED_RETRY_ALLOWED' | 'FAILED_NO_RETRY' | 'RETRY_KYC'
+    failureReason = ''
+  } = req.body;
+
+  const tx = findTransactionByQuery({ transactionId }) || Array.from(TRANSACTIONS.values()).slice(-1)[0];
+  if (!tx) {
+    return res.status(404).json({ code: 404, responseType: 'Error', message: 'Transaction not found.' });
+  }
+
+  const nextStage = tx.skipBeneficiaryHostedStep || !tx.requiredActionBeneficiary ? 'payment' : 'beneficiary';
+  const sender = findSenderByEmailOrId({ userId: tx.userId, senderId: tx.senderId });
+
+  if (outcome === 'COMPLETED' || outcome === 'PASSED') {
+    tx.kycStatus = 'COMPLETED';
+    tx.kycFailureReason = null;
+    tx.senderKycStatus = 'PASSED';
+    tx.senderKycTier = Number(tx.sendAmount) >= EXTENDED_KYC_THRESHOLD_GBP ? 'EXTENDED_KYC' : 'MINI_KYC';
+    tx.loadedActionType =
+      nextStage === 'beneficiary'
+        ? 'beneficiary (requiredAction.beneficiary.link loaded after KYC completed)'
+        : 'payment (requiredAction.payment.link loaded after KYC completed)';
+
+    if (sender) {
+      sender.kycStatus = 'PASSED';
+      sender.kycTier = tx.senderKycTier;
+      sender.verifiedProfileSnapshot = buildVerifiedProfileSnapshot(sender);
+      upsertSenderRecord(sender);
+    }
+
+    return res.json({
+      code: 200,
+      responseType: 'Success',
+      message: `KYC verification passed for ${tx.transactionId}! Showing KYC status confirmation before loading ${nextStage === 'beneficiary' ? 'Beneficiary Link' : 'Payment Link'}.`,
+      data: {
+        kycStatus: 'COMPLETED',
+        isCompleted: true,
+        isUnderReview: false,
+        isFailed: false,
+        nextStage,
+        skipBeneficiaryHostedStep: Boolean(tx.skipBeneficiaryHostedStep),
+        requiredActionBeneficiary: tx.requiredActionBeneficiary || null,
+        requiredActionPayment: tx.requiredActionPaymentOnly || null,
+        beneficiaryDirectUrl: tx.beneficiaryDirectUrl,
+        paymentDirectUrl: tx.paymentDirectUrl,
+        transaction: tx
+      }
+    });
+  }
+
+  if (outcome === 'UNDER_REVIEW') {
+    tx.kycStatus = 'UNDER_REVIEW';
+    tx.kycFailureReason = null;
+    tx.senderKycStatus = 'UNDER_REVIEW';
+    tx.loadedActionType =
+      nextStage === 'beneficiary'
+        ? 'beneficiary (requiredAction.beneficiary.link loaded while KYC is Under Review)'
+        : 'payment (requiredAction.payment.link loaded while KYC is Under Review)';
+
+    if (sender) {
+      sender.kycStatus = 'UNDER_REVIEW';
+      upsertSenderRecord(sender);
+    }
+
+    return res.json({
+      code: 200,
+      responseType: 'Success',
+      message: `KYC is Under Review for ${tx.transactionId}. Customer is informed via status screen before proceeding to ${nextStage}.`,
+      data: {
+        kycStatus: 'UNDER_REVIEW',
+        isCompleted: false,
+        isUnderReview: true,
+        isFailed: false,
+        nextStage,
+        skipBeneficiaryHostedStep: Boolean(tx.skipBeneficiaryHostedStep),
+        requiredActionBeneficiary: tx.requiredActionBeneficiary || null,
+        requiredActionPayment: tx.requiredActionPaymentOnly || null,
+        beneficiaryDirectUrl: tx.beneficiaryDirectUrl,
+        paymentDirectUrl: tx.paymentDirectUrl,
+        transaction: tx
+      }
+    });
+  }
+
+  if (outcome === 'RETRY_KYC') {
+    tx.kycStatus = 'PENDING';
+    tx.kycFailureReason = null;
+    tx.isKycRetryAllowed = true;
+    tx.loadedActionType = 'kyc (Retry: reloading requiredAction.kyc.link)';
+    return res.json({
+      code: 200,
+      responseType: 'Success',
+      message: `KYC retry initiated for ${tx.transactionId}. Reloading KYC Link (${tx.kycDirectUrl}).`,
+      data: {
+        kycStatus: 'PENDING',
+        isCompleted: false,
+        isUnderReview: false,
+        isFailed: false,
+        isRetryAllowed: true,
+        kycJourneyCode: tx.kycJourneyCode,
+        kycQrUrl: tx.kycQrUrl,
+        kycDirectUrl: tx.kycDirectUrl,
+        kycRawLink: tx.kycRawLink,
+        transaction: tx
+      }
+    });
+  }
+
+  const retryAllowed = outcome !== 'FAILED_NO_RETRY';
+  tx.kycStatus = 'FAILED';
+  tx.isKycRetryAllowed = retryAllowed;
+  tx.senderKycStatus = 'FAILED';
+  tx.kycFailureReason =
+    failureReason ||
+    (retryAllowed
+      ? 'Identity verification could not be completed (e.g., document image was unclear, session timed out, or verification was cancelled). Since retry is allowed, you may retry KYC verification or abort this transaction.'
+      : 'Identity verification failed compliance / sanctions screening and automated retry is not permitted for this transaction. Please contact Admin Support for Manual KYC assistance or return to the Dashboard.');
+
+  if (sender) {
+    sender.kycStatus = 'FAILED';
+    upsertSenderRecord(sender);
+  }
+
+  return res.json({
+    code: 200,
+    responseType: 'Success',
+    message: `KYC failed (${outcome}). Showing KYC status screen (isRetryAllowed: ${retryAllowed}).`,
+    data: {
+      kycStatus: 'FAILED',
+      isCompleted: false,
+      isUnderReview: false,
+      isFailed: true,
+      isRetryAllowed: retryAllowed,
+      failureReason: tx.kycFailureReason,
+      transaction: tx
+    }
+  });
 });
 
 // Check live Beneficiary Journey status (`requiredAction.beneficiary`) and determine whether to load Payment Link or show Beneficiary Fallback Page

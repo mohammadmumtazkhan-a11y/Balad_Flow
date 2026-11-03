@@ -1529,12 +1529,95 @@
           <strong id="stripProviderName"></strong>
           <code id="stripJourneyCode"></code>
           <code id="stripRateId"></code>
+          <a id="stripKycUrlLink" href="https://mito-checkout-1cca8e18297e.herokuapp.com"><code id="stripKycHostedUrl"></code></a>
           <a id="stripBeneficiaryUrlLink" href="https://mito-checkout-1cca8e18297e.herokuapp.com"><code id="stripBeneficiaryHostedUrl"></code></a>
           <a id="stripPaymentUrlLink" href="https://mito-checkout-1cca8e18297e.herokuapp.com"><code id="stripPaymentUrl"></code></a>
           <code id="stripRedirectUrl"></code>
-          <a id="btnOpenLiveMitoPaymentLink" href="https://mito-checkout-1cca8e18297e.herokuapp.com"></a>
+          <a id="btnOpenLiveMitoPaymentLink" href="https://mito-checkout-1cca8e18297e.herokuapp.com"><span id="btnOpenLiveMitoLabel"></span></a>
           <div id="beneficiaryStageControlBar">
             <span id="beneficiaryStageStatusBadge"></span>
+          </div>
+        </div>
+
+        <!-- ======================================================================
+             3-STAGE HOSTED FLOW STEPPER (`requiredAction.kyc` → `requiredAction.beneficiary` → `requiredAction.payment`)
+             ====================================================================== -->
+        <div id="hostedFlowStepperBar" style="background:#ffffff;border:1.5px solid #cbd5e1;border-radius:14px;padding:12px 16px;margin-bottom:12px;box-shadow:0 4px 14px rgba(15,23,42,0.04);">
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+              <div id="stepperNodeKyc" class="mono-pill" style="padding:6px 12px;font-size:12px;background:#eff6ff;color:#1e40af;border:1.5px solid #93c5fd;">
+                1. KYC Verification (<code>requiredAction.kyc</code>)
+              </div>
+              <span style="color:#94a3b8;font-weight:700;">→</span>
+              <div id="stepperNodeBeneficiary" class="mono-pill" style="padding:6px 12px;font-size:12px;background:#f1f5f9;color:#475569;border:1.5px solid #cbd5e1;">
+                2. Beneficiary (<code>requiredAction.beneficiary</code>)
+              </div>
+              <span style="color:#94a3b8;font-weight:700;">→</span>
+              <div id="stepperNodePayment" class="mono-pill" style="padding:6px 12px;font-size:12px;background:#f1f5f9;color:#475569;border:1.5px solid #cbd5e1;">
+                3. Payment (<code>requiredAction.payment</code>)
+              </div>
+            </div>
+            <div id="hostedActiveLinkSummary" style="font-size:12px;color:#334155;font-weight:600;">
+              Active Stage: <strong id="hostedActiveStageName">KYC Verification</strong>
+            </div>
+          </div>
+
+          <!-- Contextual Stage Outcome Controls (For testing & demonstrating all KYC -> Beneficiary -> Payment statuses & transitions) -->
+          <div id="hostedFlowQuickOutcomeBar" style="margin-top:10px;padding-top:10px;border-top:1px dashed #e2e8f0;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+            <span style="font-size:11.5px;color:#64748b;font-weight:600;" id="hostedQuickOutcomeLabel">Simulate Current Stage Status:</span>
+            <div id="hostedQuickOutcomeBtns" style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;"></div>
+          </div>
+        </div>
+
+        <!-- ======================================================================
+             END-CUSTOMER STAGE STATUS SCREEN (`#hostedStageStatusCard`)
+             Displayed whenever KYC or Beneficiary stage finishes (Passed, Under Review, Failed Retry Allowed, Failed No Retry)
+             Gives the end user a clear status screen with comfortable reading time (8s) before smooth transition or redirection!
+             ====================================================================== -->
+        <div id="hostedStageStatusCard" class="olowo-fullscreen-card hidden" style="background:#ffffff;border:2px solid #86efac;border-radius:16px;padding:24px 22px;margin-bottom:16px;box-shadow:0 12px 32px rgba(15,23,42,0.08);">
+          <!-- Auto-Transition / Reading Timer Banner -->
+          <div id="stageStatusTimerBanner" style="display:flex;flex-direction:column;gap:8px;background:#f0fdf4;border:1.5px solid #86efac;color:#14532d;padding:12px 14px;border-radius:12px;margin-bottom:18px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+              <div style="font-size:13.5px;font-weight:700;flex:1;min-width:200px;" id="stageStatusTimerText">
+                ⏱️ Please review your status below — Smoothly transitioning to next step in <strong>8s</strong>...
+              </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button type="button" id="btnPauseStageTransition" class="olowo-btn-outline-green sm" onclick="pauseHostedStageTransitionTimer()" style="background:#ffffff;padding:6px 12px;font-size:12px;">
+                  ⏸ Pause Timer
+                </button>
+                <button type="button" id="btnProceedStageTransitionNow" class="olowo-btn-green sm" onclick="proceedHostedStageTransitionNow()" style="padding:6px 14px;font-size:12px;">
+                  Continue Now →
+                </button>
+              </div>
+            </div>
+            <div class="succ-redirect-progress-track">
+              <div id="stageStatusTimerProgressBar" class="succ-redirect-progress-fill" style="width:100%;background:#16a34a;"></div>
+            </div>
+          </div>
+
+          <div class="success-hero-block" style="margin-bottom:16px;">
+            <div class="success-check-circle" id="stageStatusHeroIcon" style="background:#56971b;">✓</div>
+            <div class="success-status-pill" id="stageStatusPill" style="background:#dcfce7;color:#166534;">KYC Verification Passed</div>
+            <h2 class="success-main-title" id="stageStatusTitle" style="font-size:22px;">Your identity has been verified!</h2>
+            <p class="success-subtitle" id="stageStatusSubtitle" style="max-width:620px;margin:6px auto 0;">
+              MITO has verified your identity details. Next, we will smoothly load the Beneficiary page so you can confirm your recipient details.
+            </p>
+          </div>
+
+          <div class="beneficiary-fallback-meta-grid" style="margin-bottom:18px;">
+            <div><strong>Transaction ID:</strong> <code id="stageStatusMetaTxId">TXN-...</code></div>
+            <div><strong>Current Stage:</strong> <strong id="stageStatusMetaCurrentStage">Stage 1 · KYC Verification</strong></div>
+            <div><strong>Next Step:</strong> <strong id="stageStatusMetaNextStage">Stage 2 · Recipient (Beneficiary)</strong></div>
+            <div><strong>Transfer Summary:</strong> <strong id="stageStatusMetaAmount">GBP 50.00 → NGN</strong></div>
+          </div>
+
+          <div id="stageStatusActionsRow" style="display:flex;justify-content:center;gap:12px;flex-wrap:wrap;">
+            <button type="button" id="btnStageStatusPrimary" class="olowo-btn-green" onclick="proceedHostedStageTransitionNow()">
+              Continue to Next Step →
+            </button>
+            <button type="button" id="btnStageStatusSecondary" class="olowo-btn-red hidden" onclick="handleAbortTransactionAndReturnToDashboard()">
+              🚫 Abort Transaction &amp; Return to Dashboard
+            </button>
           </div>
         </div>
 

@@ -349,11 +349,16 @@ function jumpToView(viewName) {
       handleConfirmSummaryAndInitiatePayment({ bankOnlyFlow: true });
     }
   } else if (viewName === 'success') {
+    stopKycStatusAutoPolling();
     stopBeneficiaryStatusAutoPolling();
     stopPaymentStatusAutoPolling();
+    clearHostedStageTransitionTimer();
     resetDashboardAfterTransactionComplete();
   }
 
+  if (viewName !== 'payment') {
+    clearHostedStageTransitionTimer();
+  }
   if (viewName !== 'success') {
     clearStatusPageAutoRedirectTimer();
   }
@@ -2272,35 +2277,62 @@ async function handleConfirmSummaryAndInitiatePayment(options = {}) {
     if (!txRes.ok || !txRes.data.data) return;
     const txData = txRes.data.data;
     STATE.transactionId = txData.transactionId;
+    const kycAction = txData.requiredActionKyc || (txData.requiredAction && txData.requiredAction.kyc) || null;
+    const benAction = txData.requiredActionBeneficiary || (txData.requiredAction && txData.requiredAction.beneficiary) || null;
     const paymentOnly = txData.requiredActionPayment || (txData.requiredAction && txData.requiredAction.payment) || {};
-    const benAction = txData.requiredActionBeneficiary || (txData.requiredAction && txData.requiredAction.beneficiary) || {};
-    const skipBenStep = Boolean(txData.skipBeneficiaryHostedStep || (selectedBeneficiaryIdToUse && !txData.requiredActionBeneficiary));
-    STATE.requiredActionPayment = paymentOnly;
-    STATE.requiredActionBeneficiary = benAction;
 
-    const benJourneyCode = benAction.journeyCode || txData.beneficiaryJourneyCode || txData.journeyCode || '';
-    const payJourneyCode = paymentOnly.journeyCode || txData.paymentJourneyCode || benJourneyCode;
-    STATE.journeyCode = skipBenStep ? payJourneyCode : benJourneyCode;
+    const skipKycStep = Boolean(txData.skipKycHostedStep || !(kycAction && kycAction.link));
+    const skipBenStep = Boolean(txData.skipBeneficiaryHostedStep || (selectedBeneficiaryIdToUse && !(benAction && benAction.link)));
+
+    STATE.skipKycHostedStep = skipKycStep;
+    STATE.skipBeneficiaryHostedStep = skipBenStep;
+    STATE.requiredActionKyc = kycAction || {};
+    STATE.requiredActionBeneficiary = benAction || {};
+    STATE.requiredActionPayment = paymentOnly || {};
+
+    const kycJourneyCode = (kycAction && kycAction.journeyCode) || txData.kycJourneyCode || txData.journeyCode || '';
+    const benJourneyCode = (benAction && benAction.journeyCode) || txData.beneficiaryJourneyCode || txData.journeyCode || '';
+    const payJourneyCode = paymentOnly.journeyCode || txData.paymentJourneyCode || benJourneyCode || kycJourneyCode;
+
+    STATE.kycJourneyCode = kycJourneyCode;
     STATE.beneficiaryJourneyCode = benJourneyCode;
     STATE.paymentJourneyCode = payJourneyCode;
-    STATE.hostedStage = skipBenStep ? 'payment' : 'beneficiary';
+    STATE.journeyCode = !skipKycStep ? kycJourneyCode : !skipBenStep ? benJourneyCode : payJourneyCode;
+    STATE.hostedStage = !skipKycStep ? 'kyc' : !skipBenStep ? 'beneficiary' : 'payment';
 
-    // Extract the new link from the `requiredAction.beneficiary` object and load `/retail-transaction/flow?journeyCode=...` directly so it never lands on `/mobile` ("Let's get you verified")!
+    // 1. Extract KYC links (`requiredAction.kyc`)
+    STATE.kycRawLink =
+      (kycAction && kycAction.link) ||
+      txData.kycRawLink ||
+      txData.kycLink ||
+      `https://mito-checkout-1cca8e18297e.herokuapp.com/user-verification?journeyCode=${encodeURIComponent(kycJourneyCode)}`;
+    STATE.kycDirectUrl =
+      (kycAction && kycAction.directKycLink) ||
+      txData.kycDirectUrl ||
+      STATE.kycRawLink;
+    STATE.kycQrUrl =
+      (kycAction && kycAction.qrCodeLink) ||
+      txData.kycQrUrl ||
+      `https://mito-checkout-1cca8e18297e.herokuapp.com/?journeyCode=${encodeURIComponent(kycJourneyCode)}&isQRcode=true`;
+    STATE.kycHostedUrl = STATE.kycDirectUrl;
+
+    // 2. Extract Beneficiary links (`requiredAction.beneficiary`)
     STATE.beneficiaryRawLink =
-      benAction.link ||
+      (benAction && benAction.link) ||
       txData.beneficiaryRawLink ||
       txData.beneficiaryLink ||
       `https://mito-checkout-1cca8e18297e.herokuapp.com/retail-transaction?journeyCode=${encodeURIComponent(benJourneyCode)}`;
     STATE.beneficiaryDirectUrl =
-      benAction.directBeneficiaryLink ||
+      (benAction && benAction.directBeneficiaryLink) ||
       txData.beneficiaryDirectUrl ||
       `https://mito-checkout-1cca8e18297e.herokuapp.com/retail-transaction/flow?journeyCode=${encodeURIComponent(benJourneyCode)}`;
     STATE.beneficiaryQrUrl =
-      benAction.qrCodeLink ||
+      (benAction && benAction.qrCodeLink) ||
       txData.beneficiaryQrUrl ||
       `https://mito-checkout-1cca8e18297e.herokuapp.com/?journeyCode=${encodeURIComponent(benJourneyCode)}&isQRcode=true`;
     STATE.beneficiaryHostedUrl = STATE.beneficiaryDirectUrl;
 
+    // 3. Extract Payment links (`requiredAction.payment`)
     STATE.paymentRawLink =
       paymentOnly.link ||
       txData.paymentRawLink ||
@@ -2319,7 +2351,7 @@ async function handleConfirmSummaryAndInitiatePayment(options = {}) {
     STATE.paymentCheckoutUrl = STATE.paymentDirectUrl;
     STATE.redirectUrl = txData.redirectUrl || customRedirectUrl;
 
-    // Update Payment Screen Badges with requiredAction.beneficiary.link, requiredAction.payment.link, and redirectUrl
+    // Update Telemetry & Badges
     document.getElementById('payRateIdBadge').textContent = `${STATE.rateId} · ${STATE.transactionId}`;
     document.getElementById('stripRateId').textContent = STATE.rateId;
     document.getElementById('stripTxId').textContent = STATE.transactionId;
@@ -2328,7 +2360,11 @@ async function handleConfirmSummaryAndInitiatePayment(options = {}) {
     const refEl = document.getElementById('stripMitoRef');
     if (refEl) refEl.textContent = txData.reference || '';
     const jnyEl = document.getElementById('stripJourneyCode');
-    if (jnyEl) jnyEl.textContent = skipBenStep ? payJourneyCode : benJourneyCode;
+    if (jnyEl) jnyEl.textContent = STATE.journeyCode;
+    const kycHostEl = document.getElementById('stripKycHostedUrl');
+    if (kycHostEl) kycHostEl.textContent = skipKycStep ? 'Skipped (Sender KYC Already Verified)' : STATE.kycRawLink;
+    const kycUrlLinkEl = document.getElementById('stripKycUrlLink');
+    if (kycUrlLinkEl) kycUrlLinkEl.href = STATE.kycDirectUrl;
     const benHostEl = document.getElementById('stripBeneficiaryHostedUrl');
     if (benHostEl) benHostEl.textContent = skipBenStep ? `Skipped (Using existing beneficiary ${txData.beneficiaryName || selectedBeneficiaryIdToUse})` : STATE.beneficiaryRawLink;
     const benUrlLinkEl = document.getElementById('stripBeneficiaryUrlLink');
@@ -2336,35 +2372,20 @@ async function handleConfirmSummaryAndInitiatePayment(options = {}) {
     document.getElementById('stripPaymentUrl').textContent = STATE.paymentRawLink;
     const payLinkEl = document.getElementById('stripPaymentUrlLink');
     if (payLinkEl) payLinkEl.href = STATE.paymentDirectUrl;
-    const openBtnEl = document.getElementById('btnOpenLiveMitoPaymentLink');
-    const openBtnLabel = document.getElementById('btnOpenLiveMitoLabel');
-    if (openBtnEl) openBtnEl.href = skipBenStep ? STATE.paymentDirectUrl : STATE.beneficiaryDirectUrl;
-    if (openBtnLabel) {
-      openBtnLabel.innerHTML = skipBenStep
-        ? '🔗 Open Payment Link (<code>requiredAction.payment.link</code>) ↗'
-        : '🔗 Open Beneficiary Link (<code>requiredAction.beneficiary.link</code>) ↗';
-    }
     const redirEl = document.getElementById('stripRedirectUrl');
     if (redirEl) redirEl.textContent = STATE.redirectUrl;
 
-    // Ensure Fallback Page is hidden and Iframe Shell is visible on new transaction start
+    // Ensure Fallback / Stage Status Cards are hidden and Iframe Shell is visible on new transaction start
     hideBeneficiaryFallbackPage();
+    hideHostedStageStatusCard();
 
-    if (skipBenStep) {
-      // Existing beneficiary selected -> Skip Stage 3A (Beneficiary Hosted Page) and go straight to Stage 3B (Payment Hosted Page)!
-      stopBeneficiaryStatusAutoPolling();
-      updateBeneficiaryStageBanner(
-        'beneficiary_completed',
-        `Existing Beneficiary Selected (${txData.beneficiaryName || selectedBeneficiaryIdToUse}) — Skipped Adding Details!`
-      );
-      loadMitoLivePaymentIframe(STATE.paymentDirectUrl, 'paymentForm');
-      startPaymentStatusAutoPolling();
+    // Load the required first stage in order: KYC (if returned) -> Beneficiary (if returned) -> Payment!
+    if (!skipKycStep) {
+      enterKycHostedStage();
+    } else if (!skipBenStep) {
+      enterBeneficiaryHostedStage();
     } else {
-      updateBeneficiaryStageBanner('beneficiary_pending');
-      // Automatically load the Direct Beneficiary Flow (`/retail-transaction/flow?journeyCode=...`) inside #mitoLivePaymentIframe so it opens Recipient/Beneficiary directly on Mobile & Desktop!
-      loadMitoLivePaymentIframe(STATE.beneficiaryDirectUrl, 'beneficiaryForm');
-      // Start live auto-polling of `GET /api/v1/mito/Transactions/:id/beneficiary-status` so once Beneficiary is completed, we automatically load the Payment Link!
-      startBeneficiaryStatusAutoPolling();
+      enterPaymentHostedStage();
     }
 
     // Open the MITO Hosted Page Screen
@@ -2374,82 +2395,397 @@ async function handleConfirmSummaryAndInitiatePayment(options = {}) {
   }
 }
 
-function updateBeneficiaryStageBanner(stageState, extraText = '') {
-  const bar = document.getElementById('beneficiaryStageControlBar');
-  const badge = document.getElementById('beneficiaryStageStatusBadge');
-  const topBadge = document.getElementById('payTopStepBadge');
-  if (!badge) return;
+// ============================================================================
+// 3-STAGE HOSTED FLOW (`requiredAction.kyc` → `requiredAction.beneficiary` → `requiredAction.payment`)
+// & CUSTOMER-FRIENDLY STAGE STATUS PAGES WITH COMFORTABLE READING TIME (8s–10s)
+// ============================================================================
+const STAGE_STATUS_READING_SECONDS = 8; // Comfortable time for an average person to read & understand stage status before transition
+const PAYMENT_STATUS_READING_SECONDS = 10; // Comfortable time for an average person to read payment status & receipt before dashboard redirect
 
-  if (stageState === 'beneficiary_completed') {
-    if (bar) {
-      bar.style.background = '#dcfce7';
-      bar.style.borderColor = '#86efac';
-    }
-    badge.style.color = '#166534';
-    badge.innerHTML = `✅ <strong>Beneficiary Completed!</strong> Automatically loaded <strong>Payment Link (<code>requiredAction.payment.link</code> · Journey: <code>${STATE.paymentJourneyCode || ''}</code>)</strong>`;
-    if (topBadge) {
-      topBadge.textContent = `Step 3B · MITO Hosted Payment Link Loaded (Journey: ${STATE.paymentJourneyCode || ''})`;
-    }
-  } else if (stageState === 'beneficiary_failed') {
-    if (bar) {
-      bar.style.background = '#fee2e2';
-      bar.style.borderColor = '#fca5a5';
-    }
-    badge.style.color = '#991b1b';
-    badge.innerHTML = `❌ <strong>Beneficiary Step Failed:</strong> ${extraText || 'Showing Fallback Page below (Retry or Abort to Dashboard).'}`;
-    if (topBadge) {
-      topBadge.textContent = 'Step 3A · Beneficiary Fallback Page (Retry Beneficiary Details or Abort Transaction)';
-    }
-  } else {
-    if (bar) {
-      bar.style.background = '#eff6ff';
-      bar.style.borderColor = '#bfdbfe';
-    }
-    badge.style.color = '#1e40af';
-    badge.innerHTML = `⏳ <strong>Stage 3A Active (Beneficiary Journey <code>${STATE.beneficiaryJourneyCode || ''}</code>):</strong> Waiting for Beneficiary completion → Will automatically load Payment Link (<code>${STATE.paymentJourneyCode || ''}</code>)`;
-    if (topBadge) {
-      topBadge.textContent = `Step 3A · MITO Hosted Beneficiary Link (${STATE.beneficiaryJourneyCode || ''}) → Payment Link`;
-    }
+let hostedStageTransitionInterval = null;
+let hostedStageTransitionCallback = null;
+let hostedStageTransitionRemainingSec = 0;
+let hostedStageTransitionTotalSec = STAGE_STATUS_READING_SECONDS;
+
+function clearHostedStageTransitionTimer() {
+  if (hostedStageTransitionInterval) {
+    clearInterval(hostedStageTransitionInterval);
+    hostedStageTransitionInterval = null;
   }
 }
 
-function hideBeneficiaryFallbackPage() {
-  const fallbackEl = document.getElementById('beneficiaryFallbackPage');
+function pauseHostedStageTransitionTimer() {
+  clearHostedStageTransitionTimer();
+  const txtEl = document.getElementById('stageStatusTimerText');
+  const pauseBtn = document.getElementById('btnPauseStageTransition');
+  if (txtEl) {
+    txtEl.innerHTML = `⏸ Auto-transition paused — Take your time reading the status details below, and click the button whenever you are ready to proceed.`;
+  }
+  if (pauseBtn) {
+    pauseBtn.classList.add('hidden');
+  }
+}
+
+function proceedHostedStageTransitionNow() {
+  clearHostedStageTransitionTimer();
+  const fn = hostedStageTransitionCallback;
+  hostedStageTransitionCallback = null;
+  if (typeof fn === 'function') {
+    fn();
+  }
+}
+
+function startHostedStageTransitionCountdown(seconds, labelPrefix, onComplete) {
+  clearHostedStageTransitionTimer();
+  hostedStageTransitionCallback = onComplete;
+  hostedStageTransitionTotalSec = Math.max(1, seconds || STAGE_STATUS_READING_SECONDS);
+  hostedStageTransitionRemainingSec = hostedStageTransitionTotalSec;
+
+  const timerBanner = document.getElementById('stageStatusTimerBanner');
+  const txtEl = document.getElementById('stageStatusTimerText');
+  const progBar = document.getElementById('stageStatusTimerProgressBar');
+  const pauseBtn = document.getElementById('btnPauseStageTransition');
+  const proceedBtn = document.getElementById('btnProceedStageTransitionNow');
+
+  if (timerBanner) timerBanner.classList.remove('hidden');
+  if (pauseBtn) pauseBtn.classList.remove('hidden');
+  if (proceedBtn) proceedBtn.classList.remove('hidden');
+  if (progBar) progBar.style.width = '100%';
+
+  const updateTick = () => {
+    if (txtEl) {
+      txtEl.innerHTML = `${labelPrefix} in <strong>${hostedStageTransitionRemainingSec}s</strong> (giving you time to read the status below)...`;
+    }
+    if (progBar) {
+      const pct = Math.max(0, Math.min(100, ((hostedStageTransitionRemainingSec - 0.5) / hostedStageTransitionTotalSec) * 100));
+      progBar.style.width = `${pct}%`;
+    }
+  };
+  updateTick();
+
+  hostedStageTransitionInterval = setInterval(() => {
+    hostedStageTransitionRemainingSec -= 1;
+    if (hostedStageTransitionRemainingSec <= 0) {
+      if (progBar) progBar.style.width = '0%';
+      proceedHostedStageTransitionNow();
+      return;
+    }
+    updateTick();
+  }, 1000);
+}
+
+function hideHostedStageStatusCard() {
+  clearHostedStageTransitionTimer();
+  const card = document.getElementById('hostedStageStatusCard');
   const iframeShell = document.getElementById('mitoLiveIframeShell');
-  if (fallbackEl) fallbackEl.classList.add('hidden');
+  if (card) card.classList.add('hidden');
   if (iframeShell) iframeShell.classList.remove('hidden');
 }
 
-// Once Beneficiary is completed -> Automatically load the Payment page already sent in the API response in the `payment` object (`requiredAction.payment`)!
-async function handleBeneficiaryCompletedLoadPaymentLink(skipApiCall = false, paymentObjOverride = null) {
+function showHostedStageStatusCard({
+  theme = 'success', // 'success' | 'warning' | 'danger'
+  icon = '✓',
+  pillText = 'Stage Completed',
+  title = '',
+  subtitle = '',
+  currentStageLabel = '',
+  nextStageLabel = '',
+  primaryBtnText = 'Continue Now →',
+  onPrimaryClick = null,
+  showAbortBtn = false,
+  autoTransitionSeconds = STAGE_STATUS_READING_SECONDS,
+  timerLabelPrefix = '⏱️ Smoothly transitioning to next step'
+}) {
+  const card = document.getElementById('hostedStageStatusCard');
+  const iframeShell = document.getElementById('mitoLiveIframeShell');
+  const fallbackEl = document.getElementById('beneficiaryFallbackPage');
+  if (fallbackEl) fallbackEl.classList.add('hidden');
+  if (iframeShell) iframeShell.classList.add('hidden');
+  if (!card) return;
+  card.classList.remove('hidden');
+
+  const isSuccess = theme === 'success';
+  const isWarning = theme === 'warning';
+  const borderCol = isSuccess ? '#86efac' : isWarning ? '#fcd34d' : '#fca5a5';
+  const bannerBg = isSuccess ? '#f0fdf4' : isWarning ? '#fffbeb' : '#fef2f2';
+  const bannerTextCol = isSuccess ? '#14532d' : isWarning ? '#92400e' : '#991b1b';
+  const accentCol = isSuccess ? '#56971b' : isWarning ? '#d97706' : '#dc2626';
+  const pillBg = isSuccess ? '#dcfce7' : isWarning ? '#fef3c7' : '#fee2e2';
+
+  card.style.borderColor = borderCol;
+
+  const timerBanner = document.getElementById('stageStatusTimerBanner');
+  const progBar = document.getElementById('stageStatusTimerProgressBar');
+  const proceedBtn = document.getElementById('btnProceedStageTransitionNow');
+  if (timerBanner) {
+    timerBanner.style.background = bannerBg;
+    timerBanner.style.borderColor = borderCol;
+    timerBanner.style.color = bannerTextCol;
+  }
+  if (progBar) {
+    progBar.style.background = accentCol;
+  }
+  if (proceedBtn) {
+    proceedBtn.style.background = accentCol;
+    proceedBtn.textContent = primaryBtnText;
+  }
+
+  const heroIcon = document.getElementById('stageStatusHeroIcon');
+  const pillEl = document.getElementById('stageStatusPill');
+  const titleEl = document.getElementById('stageStatusTitle');
+  const subEl = document.getElementById('stageStatusSubtitle');
+  if (heroIcon) {
+    heroIcon.textContent = icon;
+    heroIcon.style.background = accentCol;
+  }
+  if (pillEl) {
+    pillEl.textContent = pillText;
+    pillEl.style.background = pillBg;
+    pillEl.style.color = bannerTextCol;
+  }
+  if (titleEl) titleEl.textContent = title;
+  if (subEl) subEl.textContent = subtitle;
+
+  const txIdEl = document.getElementById('stageStatusMetaTxId');
+  const curStageEl = document.getElementById('stageStatusMetaCurrentStage');
+  const nextStageEl = document.getElementById('stageStatusMetaNextStage');
+  const amtEl = document.getElementById('stageStatusMetaAmount');
+  if (txIdEl) txIdEl.textContent = STATE.transactionId || 'TXN-...';
+  if (curStageEl) curStageEl.textContent = currentStageLabel;
+  if (nextStageEl) nextStageEl.textContent = nextStageLabel;
+  if (amtEl) {
+    amtEl.textContent = `${STATE.sendCurrency} ${Number(STATE.sendAmount).toFixed(2)} → ${STATE.receiveCurrency} ${Number(STATE.receiveAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+
+  const primaryBtn = document.getElementById('btnStageStatusPrimary');
+  const secondaryBtn = document.getElementById('btnStageStatusSecondary');
+  if (primaryBtn) {
+    primaryBtn.textContent = primaryBtnText;
+    primaryBtn.style.background = accentCol;
+    primaryBtn.onclick = () => {
+      clearHostedStageTransitionTimer();
+      if (typeof onPrimaryClick === 'function') onPrimaryClick();
+    };
+  }
+  if (secondaryBtn) {
+    secondaryBtn.classList.toggle('hidden', !showAbortBtn);
+  }
+
+  if (autoTransitionSeconds && autoTransitionSeconds > 0 && typeof onPrimaryClick === 'function') {
+    startHostedStageTransitionCountdown(autoTransitionSeconds, timerLabelPrefix, onPrimaryClick);
+  } else {
+    clearHostedStageTransitionTimer();
+    if (timerBanner) timerBanner.classList.add('hidden');
+  }
+}
+
+function updateHostedStepperAndControls(activeStage, statusHint = 'active') {
+  const kycNode = document.getElementById('stepperNodeKyc');
+  const benNode = document.getElementById('stepperNodeBeneficiary');
+  const payNode = document.getElementById('stepperNodePayment');
+  const stageNameEl = document.getElementById('hostedActiveStageName');
+  const btnsContainer = document.getElementById('hostedQuickOutcomeBtns');
+  const outcomeLabelEl = document.getElementById('hostedQuickOutcomeLabel');
+
+  const styleNode = (el, state, textHtml) => {
+    if (!el) return;
+    el.innerHTML = textHtml;
+    if (state === 'completed') {
+      el.style.background = '#dcfce7';
+      el.style.color = '#166534';
+      el.style.borderColor = '#86efac';
+    } else if (state === 'active') {
+      el.style.background = '#dbeafe';
+      el.style.color = '#1e40af';
+      el.style.borderColor = '#3b82f6';
+    } else if (state === 'warning') {
+      el.style.background = '#fef3c7';
+      el.style.color = '#92400e';
+      el.style.borderColor = '#fcd34d';
+    } else if (state === 'failed') {
+      el.style.background = '#fee2e2';
+      el.style.color = '#991b1b';
+      el.style.borderColor = '#fca5a5';
+    } else {
+      el.style.background = '#f1f5f9';
+      el.style.color = '#64748b';
+      el.style.borderColor = '#cbd5e1';
+    }
+  };
+
+  if (activeStage === 'kyc') {
+    const kycState = statusHint === 'failed' ? 'failed' : statusHint === 'warning' ? 'warning' : statusHint === 'completed' ? 'completed' : 'active';
+    styleNode(
+      kycNode,
+      kycState,
+      kycState === 'completed'
+        ? '✓ 1. KYC Verified (<code>requiredAction.kyc</code>)'
+        : kycState === 'warning'
+        ? '⏳ 1. KYC Under Review (<code>requiredAction.kyc</code>)'
+        : kycState === 'failed'
+        ? '✕ 1. KYC Failed (<code>requiredAction.kyc</code>)'
+        : '🔵 1. KYC Active (<code>requiredAction.kyc.link</code>)'
+    );
+    styleNode(
+      benNode,
+      STATE.skipBeneficiaryHostedStep ? 'completed' : 'waiting',
+      STATE.skipBeneficiaryHostedStep
+        ? '✓ 2. Beneficiary (Saved Recipient)'
+        : '2. Beneficiary (<code>requiredAction.beneficiary</code>)'
+    );
+    styleNode(payNode, 'waiting', '3. Payment (<code>requiredAction.payment</code>)');
+    if (stageNameEl) stageNameEl.textContent = 'Stage 1 of 3 · KYC Verification (requiredAction.kyc.link)';
+    if (outcomeLabelEl) outcomeLabelEl.textContent = 'Stage 1 (KYC) Status Actions:';
+    if (btnsContainer) {
+      btnsContainer.innerHTML = `
+        <button type="button" id="btnSimKycPassed" class="olowo-btn-green sm" style="font-size:11.5px;padding:5px 10px;" onclick="handleKycCompletedOrUnderReview('COMPLETED')">
+          ✓ KYC Passed → Next Step
+        </button>
+        <button type="button" id="btnSimKycUnderReview" class="olowo-btn-outline-green sm" style="font-size:11.5px;padding:5px 10px;border-color:#d97706;color:#b45309;" onclick="handleKycCompletedOrUnderReview('UNDER_REVIEW')">
+          ⏳ KYC Under Review
+        </button>
+        <button type="button" id="btnSimKycFailedRetry" class="olowo-btn-outline-green sm" style="font-size:11.5px;padding:5px 10px;border-color:#dc2626;color:#dc2626;" onclick="handleKycFailedShowStatus(true)">
+          ⚠️ KYC Failed (Retry Allowed)
+        </button>
+        <button type="button" id="btnSimKycFailedNoRetry" class="olowo-btn-outline-green sm" style="font-size:11.5px;padding:5px 10px;border-color:#991b1b;color:#991b1b;" onclick="handleKycFailedShowStatus(false)">
+          🚫 KYC Rejected (No Retry)
+        </button>
+      `;
+    }
+  } else if (activeStage === 'beneficiary') {
+    const benState = statusHint === 'failed' ? 'failed' : statusHint === 'completed' ? 'completed' : 'active';
+    styleNode(
+      kycNode,
+      STATE.sender.kycStatus === 'UNDER_REVIEW' ? 'warning' : 'completed',
+      STATE.sender.kycStatus === 'UNDER_REVIEW'
+        ? '⏳ 1. KYC Under Review'
+        : '✓ 1. KYC Verified'
+    );
+    styleNode(
+      benNode,
+      benState,
+      benState === 'completed'
+        ? '✓ 2. Beneficiary Completed (<code>requiredAction.beneficiary</code>)'
+        : benState === 'failed'
+        ? '✕ 2. Beneficiary Failed (<code>requiredAction.beneficiary</code>)'
+        : '🔵 2. Beneficiary Active (<code>requiredAction.beneficiary.link</code>)'
+    );
+    styleNode(payNode, 'waiting', '3. Payment (<code>requiredAction.payment</code>)');
+    if (stageNameEl) stageNameEl.textContent = 'Stage 2 of 3 · Beneficiary Details (requiredAction.beneficiary.link)';
+    if (outcomeLabelEl) outcomeLabelEl.textContent = 'Stage 2 (Beneficiary) Status Actions:';
+    if (btnsContainer) {
+      btnsContainer.innerHTML = `
+        <button type="button" id="btnSimBenCompleted" class="olowo-btn-green sm" style="font-size:11.5px;padding:5px 10px;" onclick="handleBeneficiaryCompletedLoadPaymentLink(false)">
+          ✓ Beneficiary Completed → Load Payment
+        </button>
+        <button type="button" id="btnSimBenFailedRetry" class="olowo-btn-outline-green sm" style="font-size:11.5px;padding:5px 10px;border-color:#dc2626;color:#dc2626;" onclick="handleBeneficiaryFailedShowFallback(true)">
+          ⚠️ Beneficiary Failed (Retry Allowed)
+        </button>
+        <button type="button" id="btnSimBenFailedNoRetry" class="olowo-btn-outline-green sm" style="font-size:11.5px;padding:5px 10px;border-color:#991b1b;color:#991b1b;" onclick="handleBeneficiaryFailedShowFallback(false)">
+          🚫 Beneficiary Rejected (No Retry)
+        </button>
+      `;
+    }
+  } else {
+    styleNode(
+      kycNode,
+      STATE.sender.kycStatus === 'UNDER_REVIEW' ? 'warning' : 'completed',
+      STATE.sender.kycStatus === 'UNDER_REVIEW' ? '⏳ 1. KYC Under Review' : '✓ 1. KYC Verified'
+    );
+    styleNode(benNode, 'completed', '✓ 2. Beneficiary Completed');
+    styleNode(payNode, 'active', '🔵 3. Payment Active (<code>requiredAction.payment.link</code>)');
+    if (stageNameEl) stageNameEl.textContent = 'Stage 3 of 3 · Payment Checkout (requiredAction.payment.link)';
+    if (outcomeLabelEl) outcomeLabelEl.textContent = 'Stage 3 (Payment) Status Actions:';
+    if (btnsContainer) {
+      btnsContainer.innerHTML = `
+        <button type="button" id="btnSimPaySuccess" class="olowo-btn-green sm" style="font-size:11.5px;padding:5px 10px;" onclick="completePaymentAndRedirect('READYTOPROCESS')">
+          ✓ Payment Success (Paid)
+        </button>
+        <button type="button" id="btnSimPayAwaiting" class="olowo-btn-outline-green sm" style="font-size:11.5px;padding:5px 10px;border-color:#d97706;color:#b45309;" onclick="completePaymentAndRedirect('AWAITINGPAYMENT')">
+          🏦 Awaiting Bank Transfer
+        </button>
+        <button type="button" id="btnSimPayInReview" class="olowo-btn-outline-green sm" style="font-size:11.5px;padding:5px 10px;border-color:#d97706;color:#b45309;" onclick="completePaymentAndRedirect('INREVIEW')">
+          ⏳ Payment In Review
+        </button>
+        <button type="button" id="btnSimPayCancelled" class="olowo-btn-outline-green sm" style="font-size:11.5px;padding:5px 10px;border-color:#dc2626;color:#dc2626;" onclick="completePaymentAndRedirect('CANCELLED')">
+          🚫 Cancelled
+        </button>
+        <button type="button" id="btnSimPayExpired" class="olowo-btn-outline-green sm" style="font-size:11.5px;padding:5px 10px;border-color:#dc2626;color:#dc2626;" onclick="completePaymentAndRedirect('EXPIRED')">
+          ⌛ Session Expired
+        </button>
+        <button type="button" id="btnSimPayFailed" class="olowo-btn-outline-green sm" style="font-size:11.5px;padding:5px 10px;border-color:#991b1b;color:#991b1b;" onclick="completePaymentAndRedirect('FAILED')">
+          ✕ Payment Failed
+        </button>
+      `;
+    }
+  }
+}
+
+function enterKycHostedStage() {
   stopBeneficiaryStatusAutoPolling();
-  if (STATE.hostedStage === 'payment') return;
+  stopPaymentStatusAutoPolling();
+  hideBeneficiaryFallbackPage();
+  hideHostedStageStatusCard();
+
+  STATE.hostedStage = 'kyc';
+  STATE.journeyCode = STATE.kycJourneyCode || STATE.journeyCode;
+  const jnyEl = document.getElementById('stripJourneyCode');
+  if (jnyEl && STATE.kycJourneyCode) jnyEl.textContent = STATE.kycJourneyCode;
+
+  const openBtnEl = document.getElementById('btnOpenLiveMitoPaymentLink');
+  const openBtnLabel = document.getElementById('btnOpenLiveMitoLabel');
+  if (openBtnEl) openBtnEl.href = STATE.kycDirectUrl;
+  if (openBtnLabel) {
+    openBtnLabel.innerHTML = '🔗 Open KYC Link (<code>requiredAction.kyc.link</code>) ↗';
+  }
+
+  updateBeneficiaryStageBanner('kyc_pending');
+  updateHostedStepperAndControls('kyc', 'active');
+  loadMitoLivePaymentIframe(STATE.kycDirectUrl, 'kycForm');
+  startKycStatusAutoPolling();
+}
+
+function enterBeneficiaryHostedStage() {
+  stopKycStatusAutoPolling();
+  stopPaymentStatusAutoPolling();
+  hideBeneficiaryFallbackPage();
+  hideHostedStageStatusCard();
+
+  STATE.hostedStage = 'beneficiary';
+  STATE.journeyCode = STATE.beneficiaryJourneyCode || STATE.journeyCode;
+  const jnyEl = document.getElementById('stripJourneyCode');
+  if (jnyEl && STATE.beneficiaryJourneyCode) jnyEl.textContent = STATE.beneficiaryJourneyCode;
+
+  const openBtnEl = document.getElementById('btnOpenLiveMitoPaymentLink');
+  const openBtnLabel = document.getElementById('btnOpenLiveMitoLabel');
+  if (openBtnEl) openBtnEl.href = STATE.beneficiaryDirectUrl;
+  if (openBtnLabel) {
+    openBtnLabel.innerHTML = '🔗 Open Beneficiary Link (<code>requiredAction.beneficiary.link</code>) ↗';
+  }
+
+  updateBeneficiaryStageBanner('beneficiary_pending');
+  updateHostedStepperAndControls('beneficiary', 'active');
+  loadMitoLivePaymentIframe(STATE.beneficiaryDirectUrl, 'beneficiaryForm');
+  startBeneficiaryStatusAutoPolling();
+}
+
+function enterPaymentHostedStage() {
+  stopKycStatusAutoPolling();
+  stopBeneficiaryStatusAutoPolling();
+  hideBeneficiaryFallbackPage();
+  hideHostedStageStatusCard();
+
   STATE.hostedStage = 'payment';
-
-  if (paymentObjOverride && typeof paymentObjOverride === 'object') {
-    STATE.requiredActionPayment = { ...(STATE.requiredActionPayment || {}), ...paymentObjOverride };
-  }
-
-  if (!skipApiCall && STATE.transactionId) {
-    await callApi('POST', '/api/v1/mito/Transactions/BeneficiaryOutcome', {
-      transactionId: STATE.transactionId,
-      outcome: 'COMPLETED'
-    });
-  }
-
   const paymentObj = STATE.requiredActionPayment || {};
   const resolvedPayJourneyCode = paymentObj.journeyCode || STATE.paymentJourneyCode || STATE.journeyCode || '';
   if (resolvedPayJourneyCode) {
     STATE.paymentJourneyCode = resolvedPayJourneyCode;
+    STATE.journeyCode = resolvedPayJourneyCode;
   }
-
-  hideBeneficiaryFallbackPage();
-  updateBeneficiaryStageBanner('beneficiary_completed');
 
   const jnyEl = document.getElementById('stripJourneyCode');
   if (jnyEl && STATE.paymentJourneyCode) jnyEl.textContent = STATE.paymentJourneyCode;
 
-  // Use the Payment page link from the `payment` object (`requiredAction.payment`) already sent in the InitiateHostedTransaction API response!
   const rawPaymentLinkFromApi =
     paymentObj.link ||
     STATE.paymentRawLink ||
@@ -2485,13 +2821,303 @@ async function handleBeneficiaryCompletedLoadPaymentLink(skipApiCall = false, pa
     openBtnEl.innerHTML = '🔗 Open Payment Link (<code>requiredAction.payment.link</code>) ↗';
   }
 
+  updateBeneficiaryStageBanner('beneficiary_completed');
+  updateHostedStepperAndControls('payment', 'active');
   loadMitoLivePaymentIframe(normalizedPaymentDirectUrl, 'checkout');
   startPaymentStatusAutoPolling();
 }
 
-// In case Beneficiary fails -> Show Fallback Page & Message, and if allowed, allow user to add details again OR abort transaction & land on Dashboard
+// Handle KYC Completed or Under Review -> Show clear End-Customer Status Page with 8s reading time -> Smoothly transition to Beneficiary (if required) or Payment!
+async function handleKycCompletedOrUnderReview(outcome = 'COMPLETED', skipApiCall = false) {
+  stopKycStatusAutoPolling();
+  const isUnderReview = outcome === 'UNDER_REVIEW';
+  STATE.hostedStage = isUnderReview ? 'kyc_under_review' : 'kyc_completed';
+
+  if (!skipApiCall && STATE.transactionId) {
+    await callApi('POST', '/api/v1/mito/Transactions/KycOutcome', {
+      transactionId: STATE.transactionId,
+      outcome: isUnderReview ? 'UNDER_REVIEW' : 'COMPLETED'
+    });
+  }
+
+  STATE.sender.kycStatus = isUnderReview ? 'UNDER_REVIEW' : 'PASSED';
+  STATE.sender.kycTier = Number(STATE.sendAmount) >= 5000 ? 'EXTENDED_KYC' : 'MINI_KYC';
+
+  const nextIsBeneficiary = !STATE.skipBeneficiaryHostedStep;
+  const nextStageHuman = nextIsBeneficiary ? 'Stage 2 · Recipient (Beneficiary)' : 'Stage 3 · Payment Checkout';
+  const nextStageActionBtn = nextIsBeneficiary
+    ? 'Continue to Beneficiary Details Now →'
+    : 'Continue to Payment Checkout Now →';
+  const transitionFn = () => {
+    if (nextIsBeneficiary) {
+      enterBeneficiaryHostedStage();
+    } else {
+      enterPaymentHostedStage();
+    }
+  };
+
+  updateBeneficiaryStageBanner(isUnderReview ? 'kyc_under_review' : 'kyc_completed');
+  updateHostedStepperAndControls('kyc', isUnderReview ? 'warning' : 'completed');
+
+  if (isUnderReview) {
+    showHostedStageStatusCard({
+      theme: 'warning',
+      icon: '⏳',
+      pillText: 'KYC Verification Under Compliance Review',
+      title: 'Your identity verification is under review',
+      subtitle: nextIsBeneficiary
+        ? 'Your identity documents have been received and are being reviewed by our compliance team. You can proceed to enter your recipient banking details while the review completes in the background.'
+        : 'Your identity documents have been received and are being reviewed by our compliance team. You can proceed to the payment checkout while the review completes.',
+      currentStageLabel: 'Stage 1 · KYC Verification (Under Review)',
+      nextStageLabel: nextStageHuman,
+      primaryBtnText: nextStageActionBtn,
+      onPrimaryClick: transitionFn,
+      showAbortBtn: true,
+      autoTransitionSeconds: STAGE_STATUS_READING_SECONDS,
+      timerLabelPrefix: `⏱️ KYC Under Review — Smoothly loading ${nextIsBeneficiary ? 'Beneficiary Page' : 'Payment Page'}`
+    });
+  } else {
+    showHostedStageStatusCard({
+      theme: 'success',
+      icon: '✓',
+      pillText: `KYC Verification Approved (${STATE.sender.kycTier})`,
+      title: 'Your identity has been verified!',
+      subtitle: nextIsBeneficiary
+        ? 'MITO has verified your identity details. Please review this confirmation — we will now smoothly load the Beneficiary page so you can enter or confirm your recipient details.'
+        : 'MITO has verified your identity details and your saved recipient is already linked. We will now smoothly load the Payment Checkout page.',
+      currentStageLabel: 'Stage 1 · KYC Verification (Passed ✓)',
+      nextStageLabel: nextStageHuman,
+      primaryBtnText: nextStageActionBtn,
+      onPrimaryClick: transitionFn,
+      showAbortBtn: false,
+      autoTransitionSeconds: STAGE_STATUS_READING_SECONDS,
+      timerLabelPrefix: `✅ KYC Verified — Smoothly loading ${nextIsBeneficiary ? 'Beneficiary Page' : 'Payment Page'}`
+    });
+  }
+}
+
+// Handle KYC Failure (Retry Allowed vs No Retry) with clear End-Customer Status Page
+async function handleKycFailedShowStatus(isRetryAllowed = true, customMessage = '', skipApiCall = false) {
+  stopKycStatusAutoPolling();
+  STATE.hostedStage = 'kyc_failed';
+  STATE.isKycRetryAllowed = Boolean(isRetryAllowed);
+
+  let resolvedMessage = customMessage;
+  if (!skipApiCall && STATE.transactionId) {
+    const res = await callApi('POST', '/api/v1/mito/Transactions/KycOutcome', {
+      transactionId: STATE.transactionId,
+      outcome: isRetryAllowed ? 'FAILED_RETRY_ALLOWED' : 'FAILED_NO_RETRY',
+      failureReason: customMessage
+    });
+    if (res.ok && res.data && res.data.data && res.data.data.failureReason) {
+      resolvedMessage = res.data.data.failureReason;
+    }
+  }
+
+  if (!resolvedMessage) {
+    resolvedMessage = isRetryAllowed
+      ? 'We could not complete your identity verification on the MITO Hosted Page (for example, the document scan was unclear, cancelled, or timed out). Since retry is permitted, you can click below to retry KYC verification or abort this transaction.'
+      : 'Identity verification could not be approved due to compliance / screening checks, and automated retry is not permitted for this transaction. Please contact Admin Support for Manual KYC assistance or return to the Dashboard.';
+  }
+
+  updateBeneficiaryStageBanner('kyc_failed', isRetryAllowed ? 'Retry Allowed' : 'Retry Not Allowed');
+  updateHostedStepperAndControls('kyc', 'failed');
+
+  if (isRetryAllowed) {
+    showHostedStageStatusCard({
+      theme: 'danger',
+      icon: '!',
+      pillText: 'KYC Verification Incomplete · Retry Allowed',
+      title: 'Identity Verification Could Not Be Completed',
+      subtitle: resolvedMessage,
+      currentStageLabel: 'Stage 1 · KYC Verification (Failed — Retry Permitted)',
+      nextStageLabel: 'Retry KYC Verification or Abort to Dashboard',
+      primaryBtnText: '🔄 Retry Identity Verification (Reload KYC Link)',
+      onPrimaryClick: () => handleRetryKycVerification(),
+      showAbortBtn: true,
+      autoTransitionSeconds: 0
+    });
+  } else {
+    showHostedStageStatusCard({
+      theme: 'danger',
+      icon: '✕',
+      pillText: 'KYC Verification Rejected · Retry Not Allowed',
+      title: 'Identity Verification Rejected — Transaction Cannot Proceed',
+      subtitle: resolvedMessage,
+      currentStageLabel: 'Stage 1 · KYC Verification (Rejected — No Retry)',
+      nextStageLabel: 'Returning to Olowo Dashboard',
+      primaryBtnText: 'Return to Dashboard Now →',
+      onPrimaryClick: () => handleAbortTransactionAndReturnToDashboard(),
+      showAbortBtn: false,
+      autoTransitionSeconds: STAGE_STATUS_READING_SECONDS + 1,
+      timerLabelPrefix: '❌ KYC Verification Rejected — Returning to Dashboard'
+    });
+  }
+}
+
+async function handleRetryKycVerification() {
+  if (STATE.transactionId) {
+    await callApi('POST', '/api/v1/mito/Transactions/KycOutcome', {
+      transactionId: STATE.transactionId,
+      outcome: 'RETRY_KYC'
+    });
+  }
+  enterKycHostedStage();
+}
+
+function startKycStatusAutoPolling() {
+  stopKycStatusAutoPolling();
+  if (!STATE.transactionId) return;
+
+  const checkKycOnce = async () => {
+    if (STATE.currentView !== 'payment' || STATE.hostedStage !== 'kyc' || !STATE.transactionId) {
+      return;
+    }
+    try {
+      const r = await fetch(`/api/v1/mito/Transactions/${encodeURIComponent(STATE.transactionId)}/kyc-status`);
+      if (!r.ok) return;
+      const json = await r.json();
+      const d = json && json.data ? json.data : null;
+      if (!d || STATE.hostedStage !== 'kyc') return;
+      if (d.isCompleted) {
+        await handleKycCompletedOrUnderReview('COMPLETED', true);
+      } else if (d.isUnderReview) {
+        await handleKycCompletedOrUnderReview('UNDER_REVIEW', true);
+      } else if (d.isFailed) {
+        await handleKycFailedShowStatus(d.isRetryAllowed !== false, d.failureReason || '', true);
+      }
+    } catch (_) {}
+  };
+
+  STATE.kycPollTimerId = setInterval(checkKycOnce, 1200);
+}
+
+function stopKycStatusAutoPolling() {
+  if (STATE.kycPollTimerId) {
+    clearInterval(STATE.kycPollTimerId);
+    STATE.kycPollTimerId = null;
+  }
+}
+
+function updateBeneficiaryStageBanner(stageState, extraText = '') {
+  const bar = document.getElementById('beneficiaryStageControlBar');
+  const badge = document.getElementById('beneficiaryStageStatusBadge');
+  const topBadge = document.getElementById('payTopStepBadge');
+  if (!badge) return;
+
+  if (stageState === 'kyc_pending') {
+    if (bar) {
+      bar.style.background = '#eff6ff';
+      bar.style.borderColor = '#bfdbfe';
+    }
+    badge.style.color = '#1e40af';
+    badge.innerHTML = `⏳ <strong>Stage 1 Active (KYC Journey <code>${STATE.kycJourneyCode || ''}</code>):</strong> Complete Identity Verification first → Then Beneficiary → Then Payment`;
+    if (topBadge) {
+      topBadge.textContent = `Stage 1 of 3 · MITO Hosted KYC Verification (${STATE.kycJourneyCode || ''})`;
+    }
+  } else if (stageState === 'kyc_completed' || stageState === 'kyc_under_review') {
+    if (bar) {
+      bar.style.background = '#dcfce7';
+      bar.style.borderColor = '#86efac';
+    }
+    badge.style.color = '#166534';
+    badge.innerHTML = `✅ <strong>KYC Status Captured!</strong> Showing customer status screen before transitioning to the next step.`;
+    if (topBadge) {
+      topBadge.textContent = `Stage 1 Complete · KYC Verification Status`;
+    }
+  } else if (stageState === 'kyc_failed') {
+    if (bar) {
+      bar.style.background = '#fee2e2';
+      bar.style.borderColor = '#fca5a5';
+    }
+    badge.style.color = '#991b1b';
+    badge.innerHTML = `❌ <strong>KYC Verification Failed:</strong> ${extraText || 'Showing KYC status page below.'}`;
+    if (topBadge) {
+      topBadge.textContent = `Stage 1 · KYC Verification Status (${extraText || 'Failed'})`;
+    }
+  } else if (stageState === 'beneficiary_completed') {
+    if (bar) {
+      bar.style.background = '#dcfce7';
+      bar.style.borderColor = '#86efac';
+    }
+    badge.style.color = '#166534';
+    badge.innerHTML = `✅ <strong>Beneficiary Completed!</strong> Loaded <strong>Payment Link (<code>requiredAction.payment.link</code> · Journey: <code>${STATE.paymentJourneyCode || ''}</code>)</strong>`;
+    if (topBadge) {
+      topBadge.textContent = `Stage 3 of 3 · MITO Hosted Payment Link Loaded (Journey: ${STATE.paymentJourneyCode || ''})`;
+    }
+  } else if (stageState === 'beneficiary_failed') {
+    if (bar) {
+      bar.style.background = '#fee2e2';
+      bar.style.borderColor = '#fca5a5';
+    }
+    badge.style.color = '#991b1b';
+    badge.innerHTML = `❌ <strong>Beneficiary Step Failed:</strong> ${extraText || 'Showing Fallback Page below (Retry or Abort to Dashboard).'}`;
+    if (topBadge) {
+      topBadge.textContent = 'Stage 2 · Beneficiary Status & Fallback Page (Retry or Abort Transaction)';
+    }
+  } else {
+    if (bar) {
+      bar.style.background = '#eff6ff';
+      bar.style.borderColor = '#bfdbfe';
+    }
+    badge.style.color = '#1e40af';
+    badge.innerHTML = `⏳ <strong>Stage 2 Active (Beneficiary Journey <code>${STATE.beneficiaryJourneyCode || ''}</code>):</strong> Waiting for Beneficiary completion → Will smoothly transition to Payment Link (<code>${STATE.paymentJourneyCode || ''}</code>)`;
+    if (topBadge) {
+      topBadge.textContent = `Stage 2 of 3 · MITO Hosted Beneficiary Link (${STATE.beneficiaryJourneyCode || ''}) → Payment Link`;
+    }
+  }
+}
+
+function hideBeneficiaryFallbackPage() {
+  const fallbackEl = document.getElementById('beneficiaryFallbackPage');
+  const iframeShell = document.getElementById('mitoLiveIframeShell');
+  if (fallbackEl) fallbackEl.classList.add('hidden');
+  if (iframeShell) iframeShell.classList.remove('hidden');
+}
+
+// Once Beneficiary is completed -> Show clear End-Customer Status Page with 8s reading time, then smoothly load the Payment page (`requiredAction.payment.link`)!
+async function handleBeneficiaryCompletedLoadPaymentLink(skipApiCall = false, paymentObjOverride = null) {
+  stopBeneficiaryStatusAutoPolling();
+  if (STATE.hostedStage === 'payment' || STATE.hostedStage === 'beneficiary_completed') return;
+  STATE.hostedStage = 'beneficiary_completed';
+
+  if (paymentObjOverride && typeof paymentObjOverride === 'object') {
+    STATE.requiredActionPayment = { ...(STATE.requiredActionPayment || {}), ...paymentObjOverride };
+  }
+
+  if (!skipApiCall && STATE.transactionId) {
+    await callApi('POST', '/api/v1/mito/Transactions/BeneficiaryOutcome', {
+      transactionId: STATE.transactionId,
+      outcome: 'COMPLETED'
+    });
+  }
+
+  updateBeneficiaryStageBanner('beneficiary_completed');
+  updateHostedStepperAndControls('beneficiary', 'completed');
+
+  showHostedStageStatusCard({
+    theme: 'success',
+    icon: '✓',
+    pillText: 'Beneficiary Verified & Saved',
+    title: 'Recipient details confirmed!',
+    subtitle: 'Your recipient banking details have been verified and linked to this transfer. Please review this confirmation — we will now smoothly load the MITO Secure Payment Checkout to complete your payment.',
+    currentStageLabel: 'Stage 2 · Recipient / Beneficiary (Completed ✓)',
+    nextStageLabel: 'Stage 3 · Payment Checkout (requiredAction.payment.link)',
+    primaryBtnText: 'Continue to Payment Checkout Now →',
+    onPrimaryClick: () => enterPaymentHostedStage(),
+    showAbortBtn: false,
+    autoTransitionSeconds: STAGE_STATUS_READING_SECONDS,
+    timerLabelPrefix: '✅ Beneficiary Verified — Smoothly loading Payment Checkout'
+  });
+}
+
+// In case Beneficiary fails -> Show Fallback Status Page & Message; if retry is not allowed, give comfortable reading time before returning to Dashboard
 async function handleBeneficiaryFailedShowFallback(isRetryAllowed = true, customMessage = '', skipApiCall = false) {
   stopBeneficiaryStatusAutoPolling();
+  clearHostedStageTransitionTimer();
+  const stageCard = document.getElementById('hostedStageStatusCard');
+  if (stageCard) stageCard.classList.add('hidden');
+
   STATE.hostedStage = 'beneficiary_failed';
   STATE.isBeneficiaryRetryAllowed = Boolean(isRetryAllowed);
 
@@ -2510,10 +3136,11 @@ async function handleBeneficiaryFailedShowFallback(isRetryAllowed = true, custom
   if (!resolvedMessage) {
     resolvedMessage = isRetryAllowed
       ? 'We could not verify or complete the recipient banking details on the MITO Hosted Page. Since retry is permitted for this transaction, you may click "Add Beneficiary Details Again" to re-enter the recipient details, or click "Abort Transaction & Return to Dashboard".'
-      : 'Beneficiary verification failed compliance / screening checks and retry is not permitted for this transaction. Please abort the transaction to return to the Dashboard.';
+      : 'Beneficiary verification failed compliance / screening checks and retry is not permitted for this transaction. Please review this message — you can click below to abort and return to the Dashboard.';
   }
 
   updateBeneficiaryStageBanner('beneficiary_failed', isRetryAllowed ? 'Retry Allowed' : 'Retry Not Allowed');
+  updateHostedStepperAndControls('beneficiary', 'failed');
 
   const fallbackEl = document.getElementById('beneficiaryFallbackPage');
   const iframeShell = document.getElementById('mitoLiveIframeShell');
@@ -2564,23 +3191,15 @@ async function handleRetryBeneficiaryDetails() {
       outcome: 'RETRY_BENEFICIARY'
     });
   }
-  STATE.hostedStage = 'beneficiary';
-  hideBeneficiaryFallbackPage();
-  updateBeneficiaryStageBanner('beneficiary_pending');
-
-  // Open the Direct Beneficiary Form (`/retail-transaction/flow?journeyCode=...`) so the user can immediately re-enter the beneficiary details!
-  const retryUrl =
-    STATE.beneficiaryDirectUrl ||
-    STATE.beneficiaryQrUrl ||
-    `https://mito-checkout-1cca8e18297e.herokuapp.com/retail-transaction/flow?journeyCode=${encodeURIComponent(STATE.beneficiaryJourneyCode || STATE.journeyCode || '')}`;
-  loadMitoLivePaymentIframe(retryUrl, 'beneficiaryForm');
-  startBeneficiaryStatusAutoPolling();
+  enterBeneficiaryHostedStage();
 }
 
 // Abort the transaction, show Aborted Status on Dashboard & Transactions list, and smoothly return to Dashboard
 async function handleAbortTransactionAndReturnToDashboard() {
+  stopKycStatusAutoPolling();
   stopBeneficiaryStatusAutoPolling();
   stopPaymentStatusAutoPolling();
+  clearHostedStageTransitionTimer();
 
   let abortedTx = null;
   if (STATE.transactionId) {
@@ -2730,14 +3349,24 @@ window.addEventListener('message', e => {
   }
   if (!msg || typeof msg !== 'object') return;
 
-  if (msg.type === 'BALAD_BENEFICIARY_CALLBACK') {
+  if (msg.type === 'BALAD_KYC_CALLBACK') {
+    if (msg.status === 'COMPLETED' || msg.status === 'PASSED') {
+      handleKycCompletedOrUnderReview('COMPLETED', true);
+    } else if (msg.status === 'UNDER_REVIEW') {
+      handleKycCompletedOrUnderReview('UNDER_REVIEW', true);
+    } else if (msg.status === 'FAILED') {
+      handleKycFailedShowStatus(msg.isRetryAllowed !== false, msg.failureReason || '', true);
+    }
+  } else if (msg.type === 'BALAD_BENEFICIARY_CALLBACK') {
     if (msg.status === 'COMPLETED') {
       handleBeneficiaryCompletedLoadPaymentLink(true, msg.requiredActionPayment || null);
     } else if (msg.status === 'FAILED') {
       handleBeneficiaryFailedShowFallback(msg.isRetryAllowed !== false, msg.failureReason || '', true);
     }
   } else if (msg.type === 'MITO_LINK_SUCCESS') {
-    if (STATE.hostedStage === 'beneficiary') {
+    if (STATE.hostedStage === 'kyc') {
+      handleKycCompletedOrUnderReview('COMPLETED', false);
+    } else if (STATE.hostedStage === 'beneficiary') {
       handleBeneficiaryCompletedLoadPaymentLink(false, STATE.requiredActionPayment || null);
     } else if (STATE.hostedStage === 'payment') {
       stopPaymentStatusAutoPolling();
@@ -2761,7 +3390,13 @@ window.addEventListener('message', e => {
       (msg.payload && (msg.payload.status || msg.payload.reason)) ||
       (msg.metadata && (msg.metadata.status || msg.metadata.reason)) ||
       'FAILED';
-    if (STATE.hostedStage === 'beneficiary') {
+    if (STATE.hostedStage === 'kyc') {
+      handleKycFailedShowStatus(
+        true,
+        `MITO KYC Hosted Page exited (${reason}). You may retry identity verification or abort the transaction.`,
+        false
+      );
+    } else if (STATE.hostedStage === 'beneficiary') {
       handleBeneficiaryFailedShowFallback(
         true,
         `MITO Hosted Page exited (${reason}). You can add the beneficiary details again or abort the transaction.`,
@@ -2796,9 +3431,11 @@ function loadMitoLivePaymentIframe(targetUrl, mode = 'beneficiary') {
   if (overlay && overlayText) {
     if (iframeOverlayHideTimeout) clearTimeout(iframeOverlayHideTimeout);
     overlayText.innerHTML =
-      mode === 'paymentQr' || mode === 'checkout'
-        ? `✅ <strong>Beneficiary Completed!</strong><br/>Automatically loading MITO Payment Hosted Link (<code>requiredAction.payment.link</code>)...`
-        : `🔄 Automatically loading MITO Beneficiary Hosted Link (<code>requiredAction.beneficiary.link</code>)...`;
+      mode === 'kycForm' || mode === 'kyc'
+        ? `🪪 <strong>Stage 1: KYC Verification</strong><br/>Automatically loading MITO KYC Hosted Link (<code>requiredAction.kyc.link</code>)...`
+        : mode === 'paymentQr' || mode === 'checkout'
+        ? `✅ <strong>Smooth Transition to Payment!</strong><br/>Automatically loading MITO Payment Hosted Link (<code>requiredAction.payment.link</code>)...`
+        : `🔄 <strong>Stage 2: Beneficiary Details</strong><br/>Automatically loading MITO Beneficiary Hosted Link (<code>requiredAction.beneficiary.link</code>)...`;
     overlay.classList.remove('hidden');
     iframeOverlayHideTimeout = setTimeout(() => {
       overlay.classList.add('hidden');
@@ -2806,15 +3443,15 @@ function loadMitoLivePaymentIframe(targetUrl, mode = 'beneficiary') {
   }
 
   // Append `mitoEmbed=1` and stage cache-buster when embedding MITO's public Heroku page inside the iframe
-  // so MITO uses `postMessage` and the browser always triggers a fresh automatic load when transitioning Beneficiary -> Payment!
+  // so MITO uses `postMessage` and the browser always triggers a fresh automatic load when transitioning KYC -> Beneficiary -> Payment!
   let iframeSrcUrl = targetUrl;
   if (iframeSrcUrl && iframeSrcUrl.includes('mito-checkout')) {
     const isMobileViewportOrUA =
       window.innerWidth <= 768 ||
       /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini|mobile/i.test(navigator.userAgent || '');
-    // On mobile viewports/devices, never load root `/?journeyCode=...` (which MITO redirects to `/mobile` KYC screen "Let's get you verified");
-    // always route directly to `/retail-transaction/flow?journeyCode=...`!
-    if (isMobileViewportOrUA && !iframeSrcUrl.includes('/retail-transaction/flow')) {
+    const isKycMode = mode === 'kycForm' || mode === 'kyc' || iframeSrcUrl.includes('/user-verification');
+    // On mobile viewports/devices for Beneficiary/Payment, route directly to `/retail-transaction/flow?journeyCode=...`
+    if (isMobileViewportOrUA && !isKycMode && !iframeSrcUrl.includes('/retail-transaction/flow')) {
       const jcMatch = iframeSrcUrl.match(/journeyCode=([^&]+)/);
       if (jcMatch && jcMatch[1]) {
         iframeSrcUrl = `https://mito-checkout-1cca8e18297e.herokuapp.com/retail-transaction/flow?journeyCode=${jcMatch[1]}`;
@@ -3383,9 +4020,9 @@ function renderStep7TransactionResult(tx, simulatedResult, paymentMethod, captur
     `;
   }
 
-  // Navigate to the Payment Status Page (`view-success`) first, then automatically redirect to Dashboard (`view-dashboard`)!
+  // Navigate to the Payment Status Page (`view-success`) first, then automatically redirect to Dashboard (`view-dashboard`) after giving the customer enough time (10s) to read and understand the status page!
   jumpToView('success');
-  startStatusPageToDashboardCountdown(4, normalizedStatus, rawMitoOrderStatus);
+  startStatusPageToDashboardCountdown(PAYMENT_STATUS_READING_SECONDS, normalizedStatus, rawMitoOrderStatus);
 
   // After successful payment (or pending settlement), automatically retrieve the added beneficiaries via GET /api/v1/mito/Beneficiary!
   if (normalizedStatus === 'SUCCESS' || normalizedStatus === 'PENDING') {
