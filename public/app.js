@@ -465,7 +465,6 @@ function fillRegistrationPreset(presetKey, skipViewSwitch = false) {
 
   if (presetKey === 'ahmed_complete') {
     setVal('regFirstName', 'Ahmed');
-    setVal('regMiddleName', '');
     setVal('regLastName', 'Diallo');
     setVal('regFullName', 'Ahmed Diallo');
     setVal('regEmail', 'ahmed.diallo@mitonetwork.com');
@@ -490,7 +489,6 @@ function fillRegistrationPreset(presetKey, skipViewSwitch = false) {
     }
   } else {
     setVal('regFirstName', 'David');
-    setVal('regMiddleName', '');
     setVal('regLastName', 'Beckham');
     setVal('regFullName', 'David Beckham');
     setVal('regEmail', 'mohammadmumtazkhan+24@example.com');
@@ -519,7 +517,7 @@ async function handleRegisterSubmit(event) {
   if (event) event.preventDefault();
 
   const firstName = (document.getElementById('regFirstName')?.value || '').trim() || 'David';
-  const middleName = (document.getElementById('regMiddleName')?.value || '').trim() || '';
+  const middleName = '';
   const lastName = (document.getElementById('regLastName')?.value || '').trim() || 'Beckham';
   const fullName = (document.getElementById('regFullName')?.value || '').trim() || `${firstName} ${lastName}`.trim();
   const email = (document.getElementById('regEmail')?.value || '').trim() || 'mohammadmumtazkhan+24@example.com';

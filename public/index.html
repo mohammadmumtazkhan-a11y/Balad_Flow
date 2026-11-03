@@ -319,11 +319,7 @@
               2. Optional Details
             </h4>
 
-            <div class="olowo-grid-3">
-              <div class="olowo-field">
-                <label for="regMiddleName">Middle Name</label>
-                <input type="text" id="regMiddleName" class="olowo-input beige-fill" value="Robert" placeholder="Optional" />
-              </div>
+            <div class="olowo-grid-2">
               <div class="olowo-field">
                 <label for="regGender">Gender</label>
                 <select id="regGender" class="olowo-input beige-fill">
@@ -846,24 +842,18 @@
                   <input type="text" id="senderFirstNameInput" class="olowo-input" value="David" oninput="checkSenderDetailsChangedLive()" />
                 </div>
                 <div class="olowo-field">
-                  <label>Middle Name (<code>middleName</code>) <span class="muted-hint">(Optional)</span></label>
-                  <input type="text" id="senderMiddleNameInput" class="olowo-input" value="Robert" placeholder="Optional middle name" oninput="checkSenderDetailsChangedLive()" />
-                </div>
-              </div>
-
-              <div class="olowo-grid-2">
-                <div class="olowo-field">
                   <label>Legal Last Name (<code>lastName</code>) <span class="req-star">(Mandatory *)</span></label>
                   <input type="text" id="senderLastNameInput" class="olowo-input" value="Beckham" oninput="checkSenderDetailsChangedLive()" />
                 </div>
-                <div class="olowo-field">
-                  <label>Gender (<code>gender</code>: M or F) <span class="muted-hint">(Optional)</span></label>
-                  <select id="senderGenderInput" class="olowo-input" onchange="checkSenderDetailsChangedLive()">
-                    <option value="">Optional</option>
-                    <option value="M" selected>M — Male</option>
-                    <option value="F">F — Female</option>
-                  </select>
-                </div>
+              </div>
+
+              <div class="olowo-field">
+                <label>Gender (<code>gender</code>: M or F) <span class="muted-hint">(Optional)</span></label>
+                <select id="senderGenderInput" class="olowo-input" onchange="checkSenderDetailsChangedLive()">
+                  <option value="">Optional</option>
+                  <option value="M" selected>M — Male</option>
+                  <option value="F">F — Female</option>
+                </select>
               </div>
 
               <div class="olowo-grid-2">
