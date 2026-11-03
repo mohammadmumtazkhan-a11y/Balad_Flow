@@ -227,17 +227,13 @@
             <input type="hidden" id="regFullName" value="David Beckham" />
 
             <h4 class="olowo-section-subtitle" style="margin:6px 0 10px;color:#14532d;border-bottom:1px solid #e2e8f0;padding-bottom:6px;">
-              1. Personal Details
+              1. Mandatory Details
             </h4>
 
-            <div class="olowo-grid-3">
+            <div class="olowo-grid-2">
               <div class="olowo-field">
                 <label for="regFirstName">First Name <span class="req-star">*</span></label>
                 <input type="text" id="regFirstName" class="olowo-input blue-tint" value="David" oninput="syncRegFullNameFromParts()" required />
-              </div>
-              <div class="olowo-field">
-                <label for="regMiddleName">Middle Name</label>
-                <input type="text" id="regMiddleName" class="olowo-input beige-fill" value="Robert" placeholder="Optional" />
               </div>
               <div class="olowo-field">
                 <label for="regLastName">Last Name <span class="req-star">*</span></label>
@@ -280,34 +276,21 @@
               </div>
             </div>
 
-            <div class="olowo-grid-3">
+            <div class="olowo-grid-2">
               <div class="olowo-field">
-                <label for="regGender">Gender</label>
-                <select id="regGender" class="olowo-input beige-fill">
-                  <option value="">Optional</option>
-                  <option value="M" selected>Male</option>
-                  <option value="F">Female</option>
+                <label for="regEntityType">Account Type <span class="req-star">*</span></label>
+                <select id="regEntityType" class="olowo-input beige-fill" onchange="document.getElementById('regBusinessEntityRow').classList.toggle('hidden', this.value !== 'B');">
+                  <option value="I" selected>Individual</option>
+                  <option value="B">Business</option>
                 </select>
               </div>
               <div class="olowo-field">
-                <label for="regDob">Date of Birth</label>
-                <input type="date" id="regDob" class="olowo-input beige-fill" value="1975-05-02" placeholder="Optional" />
-              </div>
-              <div class="olowo-field">
-                <label for="regBaseCurrency">Base currency</label>
-                <select id="regBaseCurrency" class="olowo-input beige-fill">
-                  <option value="GBP" selected>GBP — British Pound</option>
-                  <option value="EUR">EUR — Euro</option>
+                <label for="regCountryIso3">Country of Residence <span class="req-star">*</span></label>
+                <select id="regCountryIso3" class="olowo-input beige-fill" required>
+                  <option value="GBR" selected>United Kingdom</option>
+                  <option value="FRA">France</option>
                 </select>
               </div>
-            </div>
-
-            <div class="olowo-field">
-              <label for="regEntityType">Account Type <span class="req-star">*</span></label>
-              <select id="regEntityType" class="olowo-input beige-fill" onchange="document.getElementById('regBusinessEntityRow').classList.toggle('hidden', this.value !== 'B');">
-                <option value="I" selected>Individual</option>
-                <option value="B">Business</option>
-              </select>
             </div>
 
             <div id="regBusinessEntityRow" class="olowo-grid-2 hidden">
@@ -321,45 +304,41 @@
               </div>
             </div>
 
-            <h4 class="olowo-section-subtitle" style="margin:16px 0 10px;color:#14532d;border-bottom:1px solid #e2e8f0;padding-bottom:6px;">
-              2. Residential Address
-            </h4>
-
             <div class="olowo-grid-2">
               <div class="olowo-field">
-                <label for="regBuildingNumber">Building Number</label>
-                <input type="text" id="regBuildingNumber" class="olowo-input beige-fill" value="23" placeholder="e.g. 23" />
+                <label for="regStreet">Street Address <span class="req-star">*</span></label>
+                <input type="text" id="regStreet" class="olowo-input blue-tint" value="Holland Park" placeholder="Enter street address..." required />
               </div>
-              <div class="olowo-field">
-                <label for="regSubStreet">Apartment / Suite</label>
-                <input type="text" id="regSubStreet" class="olowo-input beige-fill" placeholder="Optional" />
-              </div>
-            </div>
-
-            <div class="olowo-field">
-              <label for="regStreet">Street Address <span class="req-star">*</span></label>
-              <input type="text" id="regStreet" class="olowo-input blue-tint" value="Holland Park" placeholder="Enter street address..." required />
-            </div>
-
-            <div class="olowo-grid-2">
               <div class="olowo-field">
                 <label for="regCity">City <span class="req-star">*</span></label>
                 <input type="text" id="regCity" class="olowo-input beige-fill" value="London" placeholder="Enter city" required />
               </div>
+            </div>
+
+            <h4 class="olowo-section-subtitle" style="margin:16px 0 10px;color:#14532d;border-bottom:1px solid #e2e8f0;padding-bottom:6px;">
+              2. Optional Details
+            </h4>
+
+            <div class="olowo-grid-3">
               <div class="olowo-field">
-                <label for="regPostcode">Postcode</label>
-                <input type="text" id="regPostcode" class="olowo-input beige-fill" value="W11 3TD" placeholder="Optional" />
+                <label for="regMiddleName">Middle Name</label>
+                <input type="text" id="regMiddleName" class="olowo-input beige-fill" value="Robert" placeholder="Optional" />
+              </div>
+              <div class="olowo-field">
+                <label for="regGender">Gender</label>
+                <select id="regGender" class="olowo-input beige-fill">
+                  <option value="">Optional</option>
+                  <option value="M" selected>Male</option>
+                  <option value="F">Female</option>
+                </select>
+              </div>
+              <div class="olowo-field">
+                <label for="regDob">Date of Birth</label>
+                <input type="date" id="regDob" class="olowo-input beige-fill" value="1975-05-02" placeholder="Optional" />
               </div>
             </div>
 
             <div class="olowo-grid-2">
-              <div class="olowo-field">
-                <label for="regCountryIso3">Country of Residence <span class="req-star">*</span></label>
-                <select id="regCountryIso3" class="olowo-input beige-fill">
-                  <option value="GBR" selected>United Kingdom</option>
-                  <option value="FRA">France</option>
-                </select>
-              </div>
               <div class="olowo-field">
                 <label for="regBirthCountryIso3">Country of Birth</label>
                 <select id="regBirthCountryIso3" class="olowo-input beige-fill">
@@ -368,6 +347,28 @@
                   <option value="NGA">Nigeria</option>
                   <option value="FRA">France</option>
                 </select>
+              </div>
+              <div class="olowo-field">
+                <label for="regBaseCurrency">Base currency</label>
+                <select id="regBaseCurrency" class="olowo-input beige-fill">
+                  <option value="GBP" selected>GBP — British Pound</option>
+                  <option value="EUR">EUR — Euro</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="olowo-grid-3">
+              <div class="olowo-field">
+                <label for="regBuildingNumber">Building Number</label>
+                <input type="text" id="regBuildingNumber" class="olowo-input beige-fill" value="23" placeholder="Optional" />
+              </div>
+              <div class="olowo-field">
+                <label for="regSubStreet">Apartment / Suite</label>
+                <input type="text" id="regSubStreet" class="olowo-input beige-fill" placeholder="Optional" />
+              </div>
+              <div class="olowo-field">
+                <label for="regPostcode">Postcode</label>
+                <input type="text" id="regPostcode" class="olowo-input beige-fill" value="W11 3TD" placeholder="Optional" />
               </div>
             </div>
 
