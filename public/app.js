@@ -339,8 +339,7 @@ function jumpToView(viewName) {
   if (viewName === 'dashboard') {
     refreshDashboardHeader();
     discoverActiveCorridors().then(() => fetchQuoteLive());
-    loadDashboardProvidersAndTypes().then(() => retrieveAddedBeneficiariesAfterPayment());
-    renderDashboardRetrievedBeneficiaries();
+    loadDashboardProvidersAndTypes();
     renderTransactionsList();
   } else if (viewName === 'beneficiary') {
     loadStep4BeneficiaryMetadata();
@@ -794,9 +793,6 @@ async function loadDashboardProvidersAndTypes() {
       STATE.relationships.find(r => r.code === 'FAMILY') || STATE.relationships[0];
     populateDownwardDroplist('relationship', STATE.relationships, STATE.selectedDroplists.relationship || defaultRel);
   }
-
-  // Automatically load existing beneficiaries on Dashboard so user can select, edit/update, or delete them right away
-  retrieveAddedBeneficiariesAfterPayment();
 }
 
 function setCollectionMode(mode) {

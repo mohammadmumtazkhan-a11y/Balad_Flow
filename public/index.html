@@ -572,26 +572,16 @@
           </div>
 
           <!-- ==================================================================
-               SELECT EXISTING BENEFICIARY (SKIP ADDING DETAILS) OR ADD NEW BENEFICIARY,
-               UPDATE BANK (`POST /Beneficiaries/UpdateBeneficiary`), OR DELETE (`GET /Beneficiaries/DeleteBeneficiary`),
-               AND SELECT RECIPIENT BANK (`GET /api/v1/mito/Providers`)
+               SELECT RECIPIENT BANK (`GET /api/v1/mito/Providers`)
                ================================================================== -->
           <div class="olowo-subcard mt-16" style="background:#ffffff;border:2px solid #86efac;border-radius:16px;padding:18px 20px;box-shadow:0 6px 20px rgba(21,128,61,0.06);">
-            <!-- Active Selected Beneficiary Banner (Hidden unless an existing beneficiary is selected) -->
-            <div id="dashSelectedBeneficiaryBanner" class="hidden" style="background:#dcfce7;border:1.5px solid #22c55e;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:12.5px;color:#14532d;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-              <div id="dashSelectedBeneficiaryBannerText"></div>
-              <button type="button" id="btnClearSelectedBeneficiary" class="olowo-btn-outline-green sm" onclick="clearSelectedDashboardBeneficiary()">
-                ✕ Deselect
-              </button>
-            </div>
-
             <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;">
               <h4 class="olowo-section-subtitle" style="margin:0;color:#14532d;font-size:15px;">
                 🏦 Recipient Bank (<span id="dashProviderCountryLabel">Nigeria</span>)
                 <code id="dashProviderEndpointBadge" class="hidden"></code>
               </h4>
               <div class="mono-pill dash-rate-status-banner hidden" id="dashLockedRateStatusPill" style="background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;">
-                👆 Select a beneficiary or recipient bank to lock rate
+                👆 Select a recipient bank to lock rate
               </div>
             </div>
 
@@ -644,19 +634,6 @@
           <div class="mito-powered-footer">
             <strong>Powered by Mito Money</strong><br/>
             A registered Payment Institution in the UK with registration nos. FRN: 815146 &amp; MLR NO: 12803115.
-          </div>
-
-          <!-- RETRIEVED ADDED BENEFICIARIES SECTION -->
-          <div id="dashboardBeneficiariesSection" class="olowo-transactions-section">
-            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px;">
-              <h3 style="margin:0;">Added Beneficiaries</h3>
-              <button type="button" class="olowo-btn-outline-green sm" onclick="retrieveAddedBeneficiariesAfterPayment()">
-                🔄 Refresh
-              </button>
-            </div>
-            <div id="dashboardBeneficiariesListBox" class="olowo-transactions-box" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
-              <div class="no-transfers-empty">No beneficiaries retrieved yet.</div>
-            </div>
           </div>
 
           <!-- TRANSACTIONS LIST SECTION -->
@@ -1793,18 +1770,6 @@
               <div class="sum-row"><span>Bank / Network</span><strong id="succBenBank">Selected Beneficiary Bank</strong></div>
               <div class="sum-row"><span>Collection Mode</span><strong id="succBenMode">BANKACCOUNT</strong></div>
             </div>
-          </div>
-
-          <!-- Retrieved Added Beneficiaries Card (Populated automatically after successful payment via GET /api/v1/mito/Beneficiary) -->
-          <div id="succRetrievedBeneficiariesCard" class="olowo-summary-card mt-14 hidden" style="border:1.5px solid #86efac;background:#f0fdf4;">
-            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
-              <h4 style="margin:0;color:#14532d;display:flex;align-items:center;flex-wrap:wrap;gap:6px;">
-                <span>📋 Retrieved Added Beneficiaries</span>
-                <code id="succRetrievedBenEndpoint" class="endpoint-code-chip">GET /api/v1/mito/Beneficiary</code>
-              </h4>
-              <span class="mono-pill" id="succRetrievedBenCountBadge" style="background:#dcfce7;color:#166534;border:1px solid #86efac;">0 Retrieved</span>
-            </div>
-            <div id="succRetrievedBeneficiariesList" style="display:flex;flex-direction:column;gap:10px;"></div>
           </div>
 
           <div class="olowo-bottom-btn-row mt-24">
