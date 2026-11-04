@@ -704,17 +704,6 @@
             <!-- Repeat-KYC Guard & Change-Detection Banner (Shows live comparison vs verifiedProfileSnapshot) -->
             <div id="senderRepeatKycGuardBox" class="mito-check-banner mb-14" style="background:#f0fdf4;border:1.5px solid #86efac;"></div>
 
-            <!-- Quick Test Buttons for Verified User: Unchanged Address (Skips KYC) vs Changed Address (Re-Triggers KYC) -->
-            <div class="olowo-preset-bar mb-14" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
-              <span class="preset-label">Test Repeat-KYC Rule:</span>
-              <button type="button" class="preset-chip" onclick="restoreVerifiedSenderSnapshot()">
-                ↩️ Keep Verified Address Unchanged (23 Holland Park, W11 3TD — Skips Repeat KYC)
-              </button>
-              <button type="button" class="preset-chip" onclick="simulateSenderAddressChange()">
-                🏠 Simulate Address Change (10 Downing St, SW1A 2AA — Re-Triggers KYC)
-              </button>
-            </div>
-
             <div class="olowo-form-box">
               <div class="olowo-grid-2">
                 <div class="olowo-field">
@@ -859,20 +848,6 @@
 
           <!-- SUB-TAB 3C: MITO HOSTED KYC VERIFICATION (`link.mito.money` Desktop QR + Mobile Screens) -->
           <div id="kycSubTab-mito_verify" class="kyc-subtab hidden">
-            <!-- Simulator Controls for KYC Outcome Branching -->
-            <div class="mito-sim-Branch-bar">
-              <span class="branch-bar-label">Simulate MITO KYC Outcome:</span>
-              <button type="button" id="btnSimKycPassed" class="branch-pill active-pass" onclick="setSimulatedKycOutcome('PASSED')">
-                ✅ KYC Passed (Allow to Proceed)
-              </button>
-              <button type="button" id="btnSimKycReview" class="branch-pill" onclick="setSimulatedKycOutcome('UNDER_REVIEW')">
-                ⏳ KYC Under Review (Allow to Proceed)
-              </button>
-              <button type="button" id="btnSimKycFailed" class="branch-pill" onclick="setSimulatedKycOutcome('FAILED')">
-                ❌ KYC Failed (Block &amp; Contact Admin)
-              </button>
-            </div>
-
             <!-- KYC Status Evaluation & Gate Result Box (Prominent at Top of Step 3!) -->
             <div id="kycEvaluationResultBox" class="kyc-eval-result-box mb-18"></div>
 
@@ -901,7 +876,7 @@
                   <div class="mito-progress-fill" style="width: 14%;"></div>
                 </div>
 
-                <div class="mito-qr-box" onclick="simulateMobileKycQrScan()" title="Click to simulate scanning QR code from mobile">
+                <div class="mito-qr-box">
                   <svg class="qr-svg" viewBox="0 0 120 120" shape-rendering="crispEdges">
                     <rect width="120" height="120" fill="#ffffff"/>
                     <path d="M10,10 h28 v28 h-28 z M14,14 v20 h20 v-20 z M18,18 h12 v12 h-12 z
@@ -912,12 +887,6 @@
                              M22,62 h12 v12 h-12 z M46,58 h16 v16 h-16 z M70,62 h24 v8 h-24 z
                              M46,82 h12 v12 h-12 z M66,78 h16 v16 h-16 z M88,86 h20 v12 h-20 z M54,98 h24 v10 h-24 z" fill="#000000"/>
                   </svg>
-                </div>
-
-                <div class="center mt-14">
-                  <button type="button" class="mito-orange-btn" onclick="simulateMobileKycQrScan()">
-                    📱 Simulate Scanning QR on Mobile (`link.mito.money`)
-                  </button>
                 </div>
               </div>
 
@@ -1441,12 +1410,6 @@
             <div id="hostedActiveLinkSummary" style="font-size:12px;color:#334155;font-weight:600;">
               Active Stage: <strong id="hostedActiveStageName">KYC Verification</strong>
             </div>
-          </div>
-
-          <!-- Contextual Stage Outcome Controls (For testing & demonstrating all KYC -> Beneficiary -> Payment statuses & transitions) -->
-          <div id="hostedFlowQuickOutcomeBar" style="margin-top:10px;padding-top:10px;border-top:1px dashed #e2e8f0;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
-            <span style="font-size:11.5px;color:#64748b;font-weight:600;" id="hostedQuickOutcomeLabel">Simulate Current Stage Status:</span>
-            <div id="hostedQuickOutcomeBtns" style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;"></div>
           </div>
         </div>
 

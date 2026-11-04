@@ -2628,8 +2628,6 @@ function updateHostedStepperAndControls(activeStage, statusHint = 'active') {
   const benNode = document.getElementById('stepperNodeBeneficiary');
   const payNode = document.getElementById('stepperNodePayment');
   const stageNameEl = document.getElementById('hostedActiveStageName');
-  const btnsContainer = document.getElementById('hostedQuickOutcomeBtns');
-  const outcomeLabelEl = document.getElementById('hostedQuickOutcomeLabel');
 
   const styleNode = (el, state, textHtml) => {
     if (!el) return;
@@ -2679,23 +2677,6 @@ function updateHostedStepperAndControls(activeStage, statusHint = 'active') {
     );
     styleNode(payNode, 'waiting', '3. Payment (<code>requiredAction.payment</code>)');
     if (stageNameEl) stageNameEl.textContent = 'Stage 1 of 3 · KYC Verification (requiredAction.kyc.link)';
-    if (outcomeLabelEl) outcomeLabelEl.textContent = 'Stage 1 (KYC) Status Actions:';
-    if (btnsContainer) {
-      btnsContainer.innerHTML = `
-        <button type="button" id="btnSimKycPassed" class="olowo-btn-green sm" style="font-size:11.5px;padding:5px 10px;" onclick="handleKycCompletedOrUnderReview('COMPLETED')">
-          ✓ KYC Passed → Next Step
-        </button>
-        <button type="button" id="btnSimKycUnderReview" class="olowo-btn-outline-green sm" style="font-size:11.5px;padding:5px 10px;border-color:#d97706;color:#b45309;" onclick="handleKycCompletedOrUnderReview('UNDER_REVIEW')">
-          ⏳ KYC Under Review
-        </button>
-        <button type="button" id="btnSimKycFailedRetry" class="olowo-btn-outline-green sm" style="font-size:11.5px;padding:5px 10px;border-color:#dc2626;color:#dc2626;" onclick="handleKycFailedShowStatus(true)">
-          ⚠️ KYC Failed (Retry Allowed)
-        </button>
-        <button type="button" id="btnSimKycFailedNoRetry" class="olowo-btn-outline-green sm" style="font-size:11.5px;padding:5px 10px;border-color:#991b1b;color:#991b1b;" onclick="handleKycFailedShowStatus(false)">
-          🚫 KYC Rejected (No Retry)
-        </button>
-      `;
-    }
   } else if (activeStage === 'beneficiary') {
     const benState = statusHint === 'failed' ? 'failed' : statusHint === 'completed' ? 'completed' : 'active';
     styleNode(
@@ -2716,20 +2697,6 @@ function updateHostedStepperAndControls(activeStage, statusHint = 'active') {
     );
     styleNode(payNode, 'waiting', '3. Payment (<code>requiredAction.payment</code>)');
     if (stageNameEl) stageNameEl.textContent = 'Stage 2 of 3 · Beneficiary Details (requiredAction.beneficiary.link)';
-    if (outcomeLabelEl) outcomeLabelEl.textContent = 'Stage 2 (Beneficiary) Status Actions:';
-    if (btnsContainer) {
-      btnsContainer.innerHTML = `
-        <button type="button" id="btnSimBenCompleted" class="olowo-btn-green sm" style="font-size:11.5px;padding:5px 10px;" onclick="handleBeneficiaryCompletedLoadPaymentLink(false)">
-          ✓ Beneficiary Completed → Load Payment
-        </button>
-        <button type="button" id="btnSimBenFailedRetry" class="olowo-btn-outline-green sm" style="font-size:11.5px;padding:5px 10px;border-color:#dc2626;color:#dc2626;" onclick="handleBeneficiaryFailedShowFallback(true)">
-          ⚠️ Beneficiary Failed (Retry Allowed)
-        </button>
-        <button type="button" id="btnSimBenFailedNoRetry" class="olowo-btn-outline-green sm" style="font-size:11.5px;padding:5px 10px;border-color:#991b1b;color:#991b1b;" onclick="handleBeneficiaryFailedShowFallback(false)">
-          🚫 Beneficiary Rejected (No Retry)
-        </button>
-      `;
-    }
   } else {
     styleNode(
       kycNode,
@@ -2739,29 +2706,6 @@ function updateHostedStepperAndControls(activeStage, statusHint = 'active') {
     styleNode(benNode, 'completed', '✓ 2. Beneficiary Completed');
     styleNode(payNode, 'active', '🔵 3. Payment Active (<code>requiredAction.payment.link</code>)');
     if (stageNameEl) stageNameEl.textContent = 'Stage 3 of 3 · Payment Checkout (requiredAction.payment.link)';
-    if (outcomeLabelEl) outcomeLabelEl.textContent = 'Stage 3 (Payment) Status Actions:';
-    if (btnsContainer) {
-      btnsContainer.innerHTML = `
-        <button type="button" id="btnSimPaySuccess" class="olowo-btn-green sm" style="font-size:11.5px;padding:5px 10px;" onclick="completePaymentAndRedirect('READYTOPROCESS')">
-          ✓ Payment Success (Paid)
-        </button>
-        <button type="button" id="btnSimPayAwaiting" class="olowo-btn-outline-green sm" style="font-size:11.5px;padding:5px 10px;border-color:#d97706;color:#b45309;" onclick="completePaymentAndRedirect('AWAITINGPAYMENT')">
-          🏦 Awaiting Bank Transfer
-        </button>
-        <button type="button" id="btnSimPayInReview" class="olowo-btn-outline-green sm" style="font-size:11.5px;padding:5px 10px;border-color:#d97706;color:#b45309;" onclick="completePaymentAndRedirect('INREVIEW')">
-          ⏳ Payment In Review
-        </button>
-        <button type="button" id="btnSimPayCancelled" class="olowo-btn-outline-green sm" style="font-size:11.5px;padding:5px 10px;border-color:#dc2626;color:#dc2626;" onclick="completePaymentAndRedirect('CANCELLED')">
-          🚫 Cancelled
-        </button>
-        <button type="button" id="btnSimPayExpired" class="olowo-btn-outline-green sm" style="font-size:11.5px;padding:5px 10px;border-color:#dc2626;color:#dc2626;" onclick="completePaymentAndRedirect('EXPIRED')">
-          ⌛ Session Expired
-        </button>
-        <button type="button" id="btnSimPayFailed" class="olowo-btn-outline-green sm" style="font-size:11.5px;padding:5px 10px;border-color:#991b1b;color:#991b1b;" onclick="completePaymentAndRedirect('FAILED')">
-          ✕ Payment Failed
-        </button>
-      `;
-    }
   }
 }
 
