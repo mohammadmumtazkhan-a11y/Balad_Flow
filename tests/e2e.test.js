@@ -432,6 +432,21 @@ async function runE2ETests() {
     assert.strictEqual(payCompleteRes.data.paymentCase, 'SUCCESS');
     console.log('   ✅ Passed: Optional registration fields & 3-stage KYC -> Beneficiary -> Payment hosted flow verified.\n');
 
+    // =========================================================================
+    // TEST 7: DASHBOARD & REGISTRATION UI STREAMLINED REQUIREMENTS
+    // =========================================================================
+    console.log('7️⃣  Testing Dashboard & Registration UI Requirements (GET /)...');
+    const htmlRes = await fetch(`${baseUrl}/`).then(r => r.text());
+    assert.ok(!htmlRes.includes('id="dashboardBeneficiariesSection"'), 'Added Beneficiaries section must be removed from Dashboard');
+    assert.ok(!htmlRes.includes('id="droplist-dashProvider"'), 'Recipient Bank selector must be removed from Dashboard');
+    assert.ok(!htmlRes.includes('id="regGender"'), 'Optional Gender field must be removed from registration form');
+    assert.ok(!htmlRes.includes('id="regDob"'), 'Optional DOB field must be removed from registration form');
+    assert.ok(!htmlRes.includes('id="regPostcode"'), 'Optional Postcode field must be removed from registration form');
+    assert.ok(htmlRes.includes('value="5.00"'), 'GBP 5.00 must be default send amount on Dashboard');
+    assert.ok(htmlRes.includes("Rate locked as you click 'Continue to payment'"), 'Lock Rate button must show updated disabled label');
+    assert.ok(!htmlRes.includes('id="hostedFlowQuickOutcomeBar"'), 'Simulation status action bar must be removed from all pages');
+    console.log('   ✅ Passed: Streamlined Registration, GBP 5 default, Rate lock button, and Hosted-only collection verified.\n');
+
     console.log('🎉 ALL BALAD × MITO E2E TESTS PASSED SUCCESSFULLY!');
   } finally {
     await new Promise(resolve => server.close(resolve));
