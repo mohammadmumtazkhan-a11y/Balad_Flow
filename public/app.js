@@ -1040,6 +1040,12 @@ async function lockExchangeRateAfterRateScreen() {
     STATE.customerRate = STATE.lockedRate.exchangeRate;
     STATE.receiveAmount = STATE.lockedRate.receiveAmount;
 
+    const resolvedUserId =
+      STATE.lockedRate.mitoUserId ||
+      STATE.lockedRate.userId ||
+      dynamicUserId ||
+      'Assigned userId';
+
     const pillEl = document.getElementById('dashLockedRateStatusPill');
     if (pillEl) {
       pillEl.classList.remove('hidden');
@@ -1047,8 +1053,11 @@ async function lockExchangeRateAfterRateScreen() {
       pillEl.style.color = '#14532d';
       pillEl.style.borderColor = '#86efac';
       pillEl.innerHTML =
-        `🔒 <strong>Rate Locked!</strong> <code>rateId: ${STATE.rateId}</code> · ` +
-        `Rate: <strong>1 ${STATE.sendCurrency} = ${Number(STATE.lockedRate.exchangeRate).toLocaleString()} ${STATE.receiveCurrency}</strong> · Ready to Submit Transaction!`;
+        `🔒 <strong>Rate Locked!</strong> · ` +
+        `Endpoint: <code>POST /api/v1/mito/Exchange/rates</code> · ` +
+        `<code>rateId: ${STATE.rateId}</code> · ` +
+        `<code>userId: ${resolvedUserId}</code> · ` +
+        `Rate: <strong>1 ${STATE.sendCurrency} = ${Number(STATE.lockedRate.exchangeRate).toLocaleString()} ${STATE.receiveCurrency}</strong>`;
     }
 
     const rlwProv = document.getElementById('rlwProviderVal');
@@ -1189,6 +1198,9 @@ function handleRateExpiredRedirect() {
 }
 
 async function handleContinueToCheckout() {
+  if (STATE.isLockingAndContinuing) return;
+  STATE.isLockingAndContinuing = true;
+
   // Restore green alert styling if previously expired
   const alertBanner = document.getElementById('dashAlertBanner');
   if (alertBanner) {
@@ -1212,10 +1224,42 @@ async function handleContinueToCheckout() {
     STATE.activeBeneficiary = null;
   }
 
-  const lockedOk = await lockExchangeRateAfterRateScreen();
-  if (!lockedOk) return;
+  const continueBtn = document.getElementById('btnContinueToCheckout');
+  const origContinueHtml = continueBtn ? continueBtn.innerHTML : '🚀 Continue to Payment →';
+  if (continueBtn) {
+    continueBtn.disabled = true;
+    continueBtn.innerHTML = '🔒 Locking Rate...';
+  }
 
-  await handleConfirmSummaryAndInitiatePayment({ bankOnlyFlow: !STATE.selectedDashboardBeneficiaryId });
+  try {
+    const lockedOk = await lockExchangeRateAfterRateScreen();
+    if (!lockedOk) {
+      if (continueBtn) {
+        continueBtn.disabled = false;
+        continueBtn.innerHTML = origContinueHtml;
+      }
+      return;
+    }
+
+    const pillEl = document.getElementById('dashLockedRateStatusPill');
+    if (pillEl) {
+      pillEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+    if (continueBtn) {
+      continueBtn.innerHTML = '✅ Rate Locked! Proceeding to Payment...';
+    }
+
+    // Keep the locked rate information (Endpoint, rateId, userId, and Rate) visible on this page before moving ahead
+    await new Promise(resolve => setTimeout(resolve, 2500));
+
+    await handleConfirmSummaryAndInitiatePayment({ bankOnlyFlow: !STATE.selectedDashboardBeneficiaryId });
+  } finally {
+    STATE.isLockingAndContinuing = false;
+    if (continueBtn) {
+      continueBtn.disabled = false;
+      continueBtn.innerHTML = origContinueHtml;
+    }
+  }
 }
 
 function openSenderFormForAddressChange() {
