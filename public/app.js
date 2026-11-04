@@ -976,12 +976,8 @@ async function fetchQuoteLive() {
     document.getElementById('rateBadgeText').textContent =
       `${sendSym}1.00 to ${recSym}${Number(STATE.customerRate).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · affiliate commercial rate (userId: ${resolvedUserId})`;
 
-    const selBankName =
-      (STATE.selectedDroplists.dashProvider && STATE.selectedDroplists.dashProvider.name) ||
-      (STATE.selectedDroplists.provider && STATE.selectedDroplists.provider.name) ||
-      'Select a bank below';
     document.getElementById('corridorNotePill').innerHTML =
-      `Corridor: <strong>${STATE.sendCurrency} → ${STATE.receiveCurrency} (${STATE.receiveCountryName})</strong> · Mode: <strong>${STATE.collectionMode}</strong> · Bank: <strong id="noteSelectedBank">${selBankName}</strong>`;
+      `Corridor: <strong>${STATE.sendCurrency} → ${STATE.receiveCurrency} (${STATE.receiveCountryName})</strong> · Mode: <strong>${STATE.collectionMode}</strong>`;
   }
 }
 
@@ -1008,7 +1004,7 @@ function swapCorridorDirection() {
 }
 
 // ============================================================================
-// LOCK RATE (`POST /api/v1/mito/Exchange/rates`) WITH SELECTED BANK `providerId`
+// LOCK RATE (`POST /api/v1/mito/Exchange/rates`)
 // & SUBMIT TRANSACTION (`POST /api/v1/mito/Transactions/InitiateHostedTransaction`)
 // ============================================================================
 let rateCountdownInterval = null;
@@ -1019,39 +1015,6 @@ async function lockExchangeRateAfterRateScreen() {
     STATE.selectedDroplists.provider ||
     null;
 
-  if (!selectedProv) {
-    const pillEl = document.getElementById('dashLockedRateStatusPill');
-    if (pillEl) {
-      pillEl.classList.remove('hidden');
-      pillEl.style.background = '#fee2e2';
-      pillEl.style.color = '#991b1b';
-      pillEl.style.borderColor = '#fca5a5';
-      pillEl.innerHTML =
-        `⚠️ <strong>Please select the Beneficiary Bank / Provider from the dropdown below first!</strong> Once you select a bank, we will lock the exchange rate for that bank.`;
-    }
-    const alertBanner = document.getElementById('dashAlertBanner');
-    const alertText = document.getElementById('dashAlertText');
-    if (alertBanner && alertText) {
-      alertBanner.style.background = '#fef2f2';
-      alertBanner.style.borderColor = '#fca5a5';
-      alertBanner.style.color = '#991b1b';
-      alertText.innerHTML =
-        `⚠️ <strong>Beneficiary Bank Not Selected:</strong> Please choose a <strong>Beneficiary Bank / Provider (<code>providerId</code>)</strong> from the dropdown below before locking the rate and submitting the transaction.`;
-    }
-    const dropWrap = document.getElementById('droplist-dashProvider');
-    if (dropWrap) {
-      dropWrap.classList.add('open');
-      dropWrap.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      const searchInput = document.getElementById('droplistSearch-dashProvider');
-      if (searchInput) {
-        searchInput.value = '';
-        filterDownwardDroplist('dashProvider', '');
-        setTimeout(() => searchInput.focus(), 50);
-      }
-    }
-    return false;
-  }
-
   const dynamicUserId =
     (STATE.sender && (STATE.sender.mitoUserId || STATE.sender.userId || STATE.sender.senderId)) ||
     STATE.senderId ||
@@ -1061,8 +1024,8 @@ async function lockExchangeRateAfterRateScreen() {
     userId: dynamicUserId,
     senderId: STATE.senderId || dynamicUserId,
     beneficiaryId: STATE.beneficiaryId || null,
-    providerId: selectedProv.id,
-    providerName: selectedProv.name,
+    providerId: selectedProv ? selectedProv.id : null,
+    providerName: selectedProv ? selectedProv.name : null,
     sendCurrency: STATE.sendCurrency,
     receiveCurrency: STATE.receiveCurrency,
     receiveCountryIso3: STATE.receiveCountryIso3,
@@ -1085,13 +1048,12 @@ async function lockExchangeRateAfterRateScreen() {
       pillEl.style.borderColor = '#86efac';
       pillEl.innerHTML =
         `🔒 <strong>Rate Locked!</strong> <code>rateId: ${STATE.rateId}</code> · ` +
-        `Selected Bank: <strong>${selectedProv.name}</strong> (<code>providerId: ${selectedProv.id}</code>) · ` +
         `Rate: <strong>1 ${STATE.sendCurrency} = ${Number(STATE.lockedRate.exchangeRate).toLocaleString()} ${STATE.receiveCurrency}</strong> · Ready to Submit Transaction!`;
     }
 
     const rlwProv = document.getElementById('rlwProviderVal');
-    if (rlwProv && selectedProv) {
-      rlwProv.textContent = selectedProv.name;
+    if (rlwProv) {
+      rlwProv.textContent = selectedProv ? selectedProv.name : 'Collected on Hosted Page';
     }
 
     const totalSec = STATE.lockedRate.rateExpirySeconds || 900;
@@ -2255,24 +2217,20 @@ async function handleConfirmSummaryAndInitiatePayment(options = {}) {
       STATE.selectedDroplists.dashProvider ||
       STATE.selectedDroplists.provider ||
       null;
-    if (!selectedProvider) {
-      await lockExchangeRateAfterRateScreen();
-      return;
-    }
 
-    // Use the rateId locked on Screen 2 for the selected bank; if not locked yet, expired, or locked for a different bank, lock now
+    // Use the rateId locked on Screen 2; if not locked yet or expired, lock now
     if (
       !STATE.rateId ||
       !STATE.lockedRate ||
       (STATE.rateRemainingSeconds || 0) <= 0 ||
-      STATE.lockedRate.providerId !== selectedProvider.id
+      (selectedProvider && STATE.lockedRate.providerId !== selectedProvider.id)
     ) {
       const lockedOk = await lockExchangeRateAfterRateScreen();
       if (!lockedOk) return;
     }
 
-    const providerId = selectedProvider.id;
-    const providerName = selectedProvider.name;
+    const providerId = selectedProvider ? selectedProvider.id : (STATE.lockedRate && STATE.lockedRate.providerId) || null;
+    const providerName = selectedProvider ? selectedProvider.name : (STATE.lockedRate && STATE.lockedRate.providerName) || null;
 
     const customRedirectUrl =
       document.getElementById('sumRedirectUrlInput')?.value.trim() ||

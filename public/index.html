@@ -517,50 +517,21 @@
 
               <!-- Noted Corridor Indicator -->
               <div class="sunset-corridor-note" id="corridorNotePill">
-                Corridor: <strong>GBP → NGN (Nigeria)</strong> · Mode: <strong id="noteCollectionMode">BANKACCOUNT</strong> · Bank: <strong id="noteSelectedBank">Select a bank below</strong>
+                Corridor: <strong>GBP → NGN (Nigeria)</strong> · Mode: <strong id="noteCollectionMode">BANKACCOUNT</strong>
               </div>
             </div>
           </div>
 
           <!-- ==================================================================
-               SELECT RECIPIENT BANK (`GET /api/v1/mito/Providers`)
+               LOCK RATE (`POST Exchange/rates`) & CONTINUE TO PAYMENT (`POST InitiateHostedTransaction`)
                ================================================================== -->
           <div class="olowo-subcard mt-16" style="background:#ffffff;border:2px solid #86efac;border-radius:16px;padding:18px 20px;box-shadow:0 6px 20px rgba(21,128,61,0.06);">
-            <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;">
-              <h4 class="olowo-section-subtitle" style="margin:0;color:#14532d;font-size:15px;">
-                🏦 Recipient Bank (<span id="dashProviderCountryLabel">Nigeria</span>)
-                <code id="dashProviderEndpointBadge" class="hidden"></code>
-              </h4>
-              <div class="mono-pill dash-rate-status-banner hidden" id="dashLockedRateStatusPill" style="background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;">
-                👆 Select a recipient bank to lock rate
-              </div>
-            </div>
-
-            <!-- Downward-Opening Searchable Bank / Provider Droplist -->
-            <div class="olowo-field">
-              <label id="dashProviderLabel">Recipient Bank / Provider <span class="req-star">*</span> <span class="req-mandatory">(mandatory)</span></label>
-              <div class="downward-droplist" id="droplist-dashProvider">
-                <button type="button" class="droplist-trigger" onclick="toggleDownwardDroplist('dashProvider')">
-                  <span id="droplistSelected-dashProvider">-- Select Recipient Bank --</span>
-                  <span class="droplist-chevron">⌄</span>
-                </button>
-                <div class="droplist-menu" id="droplistMenu-dashProvider">
-                  <div class="droplist-search-wrap">
-                    <input
-                      type="text"
-                      class="droplist-search-input"
-                      id="droplistSearch-dashProvider"
-                      placeholder="Search bank or mobile network..."
-                      oninput="filterDownwardDroplist('dashProvider', this.value)"
-                    />
-                  </div>
-                  <ul class="droplist-options" id="droplistOptions-dashProvider"></ul>
-                </div>
-              </div>
+            <div class="mono-pill dash-rate-status-banner hidden" id="dashLockedRateStatusPill" style="background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;margin-bottom:12px;">
+              🔒 Rate ready to lock
             </div>
 
             <!-- Action Buttons -->
-            <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px;">
+            <div style="display:flex;gap:10px;flex-wrap:wrap;">
               <button
                 type="button"
                 id="btnLockRateOnly"
