@@ -83,11 +83,11 @@
       </div>
       <div class="rlw-row">
         <span>You Send:</span>
-        <strong id="rlwSendVal">£1,000.00 GBP</strong>
+        <strong id="rlwSendVal">£5.00 GBP</strong>
       </div>
       <div class="rlw-row">
         <span>They Receive:</span>
-        <strong id="rlwReceiveVal">₦1,831,010.00 NGN</strong>
+        <strong id="rlwReceiveVal">₦9,155.05 NGN</strong>
       </div>
       <div class="rlw-row">
         <span>Selected Bank:</span>
@@ -420,8 +420,8 @@
           <!-- Quick Test Amount / Corridor Bar -->
           <div class="olowo-rate-quickbar">
             <span class="quickbar-label">Quick Send Amount:</span>
-            <button type="button" class="quick-amt-btn" onclick="setSendAmountQuick(5)">£5.00</button>
-            <button type="button" class="quick-amt-btn active" onclick="setSendAmountQuick(1000)">£1,000.00</button>
+            <button type="button" class="quick-amt-btn active" onclick="setSendAmountQuick(5)">£5.00</button>
+            <button type="button" class="quick-amt-btn" onclick="setSendAmountQuick(1000)">£1,000.00</button>
             <button type="button" class="quick-amt-btn highlight-amber" onclick="setSendAmountQuick(5500)">£5,500.00</button>
             <div class="collection-mode-pills">
               <button type="button" id="pillBankMode" class="mode-pill active" onclick="setCollectionMode('BANKACCOUNT')">🏦 Bank Account</button>
@@ -454,7 +454,7 @@
                   type="number"
                   id="sendAmountInput"
                   class="sunset-amount-input"
-                  value="1000.00"
+                  value="5.00"
                   min="1"
                   step="0.01"
                   oninput="handleSendAmountInput()"
@@ -507,7 +507,7 @@
                   type="number"
                   id="receiveAmountInput"
                   class="sunset-amount-input"
-                  value="1823439.90"
+                  value="9155.05"
                   min="1"
                   step="0.01"
                   oninput="handleReceiveAmountInput()"

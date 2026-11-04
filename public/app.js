@@ -34,9 +34,9 @@ const STATE = {
   receiveCountryIso3: 'NGA',
   receiveCountryName: 'Nigeria',
   collectionMode: 'BANKACCOUNT', // 'BANKACCOUNT' | 'MOBILEMONEY'
-  sendAmount: 1000.00,
-  receiveAmount: 1823439.90,
-  customerRate: 1823.4399,
+  sendAmount: 5.00,
+  receiveAmount: 9155.05,
+  customerRate: 1831.01,
   partnerRate: 1828.01,
   commission: 4.00,
   requiresExtendedKyc: false,
