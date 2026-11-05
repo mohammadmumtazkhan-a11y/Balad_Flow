@@ -565,8 +565,8 @@ async function handleRegisterSubmit(event) {
   const email = (document.getElementById('regEmail')?.value || '').trim() || getCurrentDavidPresetEmail();
   const phoneDialCode = document.getElementById('regDialCode')?.value || '+44';
   const rawPhone = (document.getElementById('regPhone')?.value || '').replace(/^\+44\s*/, '').trim() || '7553039222';
-  const gender = (document.getElementById('regGender')?.value || '').trim();
-  const dob = (document.getElementById('regDob')?.value || '').trim();
+  const gender = (document.getElementById('regGender')?.value || '').trim() || 'M';
+  const dob = (document.getElementById('regDob')?.value || '').trim() || '1975-05-02';
   const baseCurrency = document.getElementById('regBaseCurrency')?.value || 'GBP';
   const legalEntityType = document.getElementById('regEntityType')?.value || 'I';
   const companyNumber = legalEntityType === 'B' ? (document.getElementById('regCompanyNumber')?.value || '').trim() : null;
@@ -575,9 +575,9 @@ async function handleRegisterSubmit(event) {
   const subStreet = (document.getElementById('regSubStreet')?.value || '').trim() || '';
   const street = (document.getElementById('regStreet')?.value || '').trim() || 'Holland Park';
   const city = (document.getElementById('regCity')?.value || '').trim() || 'London';
-  const postcode = (document.getElementById('regPostcode')?.value || '').trim();
+  const postcode = (document.getElementById('regPostcode')?.value || '').trim() || 'W11 3TH';
   const countryIso3 = document.getElementById('regCountryIso3')?.value || 'GBR';
-  const birthCountryIso3 = (document.getElementById('regBirthCountryIso3')?.value || '').trim();
+  const birthCountryIso3 = (document.getElementById('regBirthCountryIso3')?.value || '').trim() || countryIso3 || 'GBR';
   const isAhmed = email.toLowerCase().includes('ahmed');
 
   // 1A. Create / update Olowo account with ALL unified registration fields in one form (`POST /api/olowo/auth/register`)
@@ -3433,16 +3433,20 @@ function loadMitoLivePaymentIframe(targetUrl, mode = 'beneficiary') {
   // Append `mitoEmbed=1` and stage cache-buster when embedding MITO's public Heroku page inside the iframe
   // so MITO uses `postMessage` and the browser always triggers a fresh automatic load when transitioning KYC -> Beneficiary -> Payment!
   let iframeSrcUrl = targetUrl;
+  let journeyCodeInUrl = '';
   if (iframeSrcUrl && iframeSrcUrl.includes('mito-checkout')) {
+    const jcMatch = iframeSrcUrl.match(/journeyCode=([^&#]+)/);
+    if (jcMatch && jcMatch[1]) {
+      journeyCodeInUrl = decodeURIComponent(jcMatch[1]);
+    }
     const isMobileViewportOrUA =
       window.innerWidth <= 768 ||
       /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini|mobile/i.test(navigator.userAgent || '');
     const isKycMode = mode === 'kycForm' || mode === 'kyc' || iframeSrcUrl.includes('/user-verification');
     // On mobile viewports/devices for Beneficiary/Payment, route directly to `/retail-transaction/flow?journeyCode=...`
     if (isMobileViewportOrUA && !isKycMode && !iframeSrcUrl.includes('/retail-transaction/flow')) {
-      const jcMatch = iframeSrcUrl.match(/journeyCode=([^&]+)/);
-      if (jcMatch && jcMatch[1]) {
-        iframeSrcUrl = `https://mito-checkout-1cca8e18297e.herokuapp.com/retail-transaction/flow?journeyCode=${jcMatch[1]}`;
+      if (journeyCodeInUrl) {
+        iframeSrcUrl = `https://mito-checkout-1cca8e18297e.herokuapp.com/retail-transaction/flow?journeyCode=${encodeURIComponent(journeyCodeInUrl)}`;
       }
     }
     if (!iframeSrcUrl.includes('mitoEmbed=')) {
@@ -3455,10 +3459,33 @@ function loadMitoLivePaymentIframe(targetUrl, mode = 'beneficiary') {
   }
 
   if (iframe && iframeSrcUrl) {
-    iframe.onload = () => {
-      if (overlay) overlay.classList.add('hidden');
-    };
-    iframe.src = iframeSrcUrl;
+    // MITO Hosted Checkout Race-Condition Fix:
+    // MITO's React bundle (`<kY />`) fetches `POST /api/v1/mito/auth/Token` asynchronously for `journeyCode` and stores `jwt_token` in localStorage,
+    // while `<Hs />` (`AddressVerification`) mounts immediately and calls `GET /api/v1/mito/HostedPage/GetUserdata` before `jwt_token` is updated,
+    // causing "Could not load your profile" and Plaid asking for First/Last Name again.
+    // Pre-warming `/__auth_init?journeyCode=...` lets `<kY />` store the fresh `jwt_token` for this `journeyCode` before `<Hs />` mounts!
+    if (journeyCodeInUrl && STATE.lastWarmedMitoJourneyCode !== journeyCodeInUrl) {
+      if (iframeOverlayHideTimeout) clearTimeout(iframeOverlayHideTimeout);
+      iframeOverlayHideTimeout = setTimeout(() => {
+        if (overlay) overlay.classList.add('hidden');
+      }, 2400);
+      const warmUrl = `https://mito-checkout-1cca8e18297e.herokuapp.com/__auth_init?journeyCode=${encodeURIComponent(journeyCodeInUrl)}&mitoEmbed=1&_warm=${Date.now()}`;
+      iframe.onload = () => {
+        setTimeout(() => {
+          STATE.lastWarmedMitoJourneyCode = journeyCodeInUrl;
+          iframe.onload = () => {
+            if (overlay) overlay.classList.add('hidden');
+          };
+          iframe.src = iframeSrcUrl;
+        }, 850);
+      };
+      iframe.src = warmUrl;
+    } else {
+      iframe.onload = () => {
+        if (overlay) overlay.classList.add('hidden');
+      };
+      iframe.src = iframeSrcUrl;
+    }
   }
   if (urlBar && targetUrl) {
     urlBar.textContent = `🔒 ${targetUrl}`;
@@ -3484,7 +3511,16 @@ function loadMitoLivePaymentIframe(targetUrl, mode = 'beneficiary') {
 
 function switchMitoLivePaymentFrameMode(mode) {
   hideBeneficiaryFallbackPage();
-  if (mode === 'beneficiary') {
+  if (mode === 'kycForm' || mode === 'kyc') {
+    STATE.hostedStage = 'kyc';
+    const kycUrl =
+      STATE.kycDirectUrl ||
+      STATE.kycUrl ||
+      `https://mito-checkout-1cca8e18297e.herokuapp.com/retail-transaction?journeyCode=${encodeURIComponent(STATE.kycJourneyCode || STATE.journeyCode || '')}`;
+    STATE.lastWarmedMitoJourneyCode = null;
+    loadMitoLivePaymentIframe(kycUrl, 'kycForm');
+    startKycStatusAutoPolling();
+  } else if (mode === 'beneficiary') {
     STATE.hostedStage = 'beneficiary';
     const benQrUrl =
       STATE.beneficiaryQrUrl ||

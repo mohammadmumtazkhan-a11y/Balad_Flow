@@ -588,6 +588,9 @@ app.post('/api/v1/mito/auth/login', async (req, res) => {
 //    Phone, Base currency). It does NOT call POST /api/v1/mito/Users yet!
 // ============================================================================
 app.post('/api/olowo/auth/register', (req, res) => {
+  if (req.body && req.body.submitToMito === true) {
+    return handleMitoCreateUser(req, res);
+  }
   const {
     userId,
     senderId,
@@ -890,6 +893,11 @@ async function handleMitoCreateUser(req, res) {
 
   // Build exact 18-field MITO Staging payload for POST /api/v1/mito/Users
   const trimmedEmail = String(email || '').trim();
+  const finalGender = gender || 'M';
+  const finalDob = resolvedDob || '1975-05-02';
+  const finalBuildingNumber = buildingNumber || '23';
+  const finalPostcode = resolvedPostcode || 'W11 3TH';
+  const finalBirthCountry = birthCountryIso3 || countryIso3 || 'GBR';
   const buildMitoUserPayload = targetEmail => ({
     countryIso3,
     email: targetEmail,
@@ -897,18 +905,18 @@ async function handleMitoCreateUser(req, res) {
     firstName: firstName.trim(),
     middleName: middleName ? middleName.trim() : '',
     lastName: lastName.trim(),
-    gender: gender || 'M',
+    gender: finalGender,
     legalEntityType,
     ...(legalEntityType === 'B' ? { companyNumber, businessName } : {}),
-    dateOfBirth: resolvedDob || '1975-05-02',
-    buildingNumber: buildingNumber || '23',
+    dateOfBirth: finalDob,
+    buildingNumber: finalBuildingNumber,
     buildingName: buildingName || '',
     subStreet: subStreet || '',
     street: resolvedStreet,
     addressCity: resolvedCity,
-    addressPostcode: resolvedPostcode || 'W11 3TH',
+    addressPostcode: finalPostcode,
     addressCountryIso3,
-    birthCountryIso3: birthCountryIso3 || countryIso3 || 'GBR'
+    birthCountryIso3: finalBirthCountry
   });
 
   let stagingEmailUsed = trimmedEmail || `david.beckham.${Date.now()}@olowo.app`;
@@ -954,23 +962,23 @@ async function handleMitoCreateUser(req, res) {
     firstName: firstName.trim(),
     middleName: middleName || '',
     lastName: lastName.trim(),
-    gender,
+    gender: finalGender,
     legalEntityType,
     companyNumber: legalEntityType === 'B' ? companyNumber : null,
     businessName: legalEntityType === 'B' ? businessName : null,
-    dateOfBirth: resolvedDob,
-    dob: resolvedDob,
-    buildingNumber: buildingNumber || '23',
+    dateOfBirth: finalDob,
+    dob: finalDob,
+    buildingNumber: finalBuildingNumber,
     buildingName: buildingName || '',
     subStreet: subStreet || '',
     street: resolvedStreet,
     address: resolvedStreet,
     addressCity: resolvedCity,
     city: resolvedCity,
-    addressPostcode: resolvedPostcode,
-    postcode: resolvedPostcode,
+    addressPostcode: finalPostcode,
+    postcode: finalPostcode,
     addressCountryIso3,
-    birthCountryIso3,
+    birthCountryIso3: finalBirthCountry,
     baseCurrency,
     country: countryIso3 === 'GBR' ? 'GB' : countryIso3,
     amlExecutedOnCreate: false, // Per MITO spec: "Persisted only — this endpoint does not run AML."
