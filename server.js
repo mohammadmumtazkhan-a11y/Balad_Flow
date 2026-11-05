@@ -2,14 +2,395 @@ const express = require('express');
 const path = require('path');
 const crypto = require('crypto');
 
+try {
+  if (typeof process.loadEnvFile === 'function') {
+    process.loadEnvFile();
+  }
+} catch (_) {
+  /* optional .env */
+}
+
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ============================================================================
-// 1. REAL MITO SANDBOX / STAGING CREDENTIALS & CONFIGURATION
+// 1. REAL MITO SANDBOX / STAGING CREDENTIALS & MAILJET CONFIGURATION
 // ============================================================================
+const MAILJET_CONFIG = {
+  apiKey: process.env.MAILJET_API_KEY || '770a00232108f31e3f954efcd425331c',
+  secretKey: process.env.MAILJET_SECRET_KEY || '1d4f29067dc237f8c1507ca5b7340e3f',
+  fromEmail: process.env.MAILJET_FROM_EMAIL || 'mohammadmumtazkhan@gmail.com',
+  fromName: process.env.MAILJET_FROM_NAME || 'olowo I Money Transfer',
+  webhookUser: process.env.MAILJET_WEBHOOK_USER || '',
+  webhookPass: process.env.MAILJET_WEBHOOK_PASS || ''
+};
+
+const recentMailjetEvents = [];
+
+function recordMailjetWebhookEvent(evt) {
+  recentMailjetEvents.unshift(evt);
+  if (recentMailjetEvents.length > 200) {
+    recentMailjetEvents.length = 200;
+  }
+}
+
+function listRecentMailjetWebhookEvents() {
+  return [...recentMailjetEvents];
+}
+
+function isAutomatedTestEmail(email) {
+  const lower = String(email || '').trim().toLowerCase();
+  return (
+    !lower ||
+    !lower.includes('@') ||
+    lower.endsWith('@example.com') ||
+    lower.endsWith('@rhemito.com') ||
+    lower.endsWith('@mitonetwork.com') ||
+    lower.endsWith('@test.com') ||
+    lower.endsWith('@olowo.app') ||
+    lower.endsWith('@topupnigeria.com')
+  );
+}
+
+/**
+ * Transactional Email Provider (Mailjet Send API v3.1 + Event Webhook tracking, matching Rhemito-UI):
+ * - When `MAILJET_API_KEY` and `MAILJET_SECRET_KEY` are configured and the
+ *   recipient is a real email address (not `@example.com` / `@mitonetwork.com` automated
+ *   test fixtures), sends a real email through Mailjet Send API v3.1
+ *   (`POST https://api.mailjet.com/v3.1/send`) with `CustomID` and `EventPayload`
+ *   for Mailjet Event API webhooks.
+ * - Also emits a local `sent` webhook event into the Mailjet webhook event log
+ *   so webhook tracking works immediately on `localhost`.
+ */
+const mailjetEmailProvider = {
+  id: 'mailjet:email',
+
+  async send(message) {
+    const { apiKey, secretKey, fromEmail, fromName } = MAILJET_CONFIG;
+    const recipientEmail = String(message.to || '').trim();
+    const canUseMailjet =
+      Boolean(apiKey && secretKey && fromEmail && recipientEmail) && !isAutomatedTestEmail(recipientEmail);
+
+    if (canUseMailjet) {
+      try {
+        const auth = Buffer.from(`${apiKey}:${secretKey}`).toString('base64');
+        const htmlPart =
+          message.html ||
+          `<div style="font-family:Inter,Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#0f172a;line-height:1.6;border:1px solid #e2e8f0;border-radius:16px;">` +
+            `<div style="background:#56971b;color:#ffffff;padding:16px 20px;border-radius:12px 12px 0 0;font-weight:700;font-size:18px;margin:-24px -24px 20px -24px;">` +
+              `${fromName || 'olowo I Money Transfer'}` +
+            `</div>` +
+            String(message.text || '')
+              .split('\n')
+              .map(line => `<p style="margin:0 0 10px;">${line}</p>`)
+              .join('') +
+            `<div style="margin-top:24px;padding-top:14px;border-top:1px solid #e2e8f0;font-size:12px;color:#64748b;text-align:center;">` +
+              `${fromName || 'olowo I Money Transfer'} · Powered by MITO.Money` +
+            `</div>` +
+          `</div>`;
+
+        const response = await fetch('https://api.mailjet.com/v3.1/send', {
+          method: 'POST',
+          headers: {
+            Authorization: `Basic ${auth}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            Messages: [
+              {
+                From: {
+                  Email: fromEmail,
+                  Name: fromName || 'olowo I Money Transfer'
+                },
+                To: [
+                  {
+                    Email: recipientEmail,
+                    Name: message.toName || recipientEmail.split('@')[0]
+                  }
+                ],
+                Subject: message.subject,
+                TextPart: message.text,
+                HTMLPart: htmlPart,
+                ...(message.customId ? { CustomID: String(message.customId).slice(0, 64) } : {}),
+                ...(message.eventPayload ? { EventPayload: String(message.eventPayload) } : {}),
+                ...(Array.isArray(message.attachments) && message.attachments.length > 0
+                  ? {
+                      Attachments: message.attachments.map(att => ({
+                        ContentType: att.contentType,
+                        Filename: att.filename,
+                        Base64Content: att.base64Content
+                      }))
+                    }
+                  : {})
+              }
+            ]
+          })
+        });
+
+        const data = await response.json().catch(() => null);
+        const firstMsg = data && Array.isArray(data.Messages) ? data.Messages[0] : null;
+        const firstRecipient = firstMsg && Array.isArray(firstMsg.To) ? firstMsg.To[0] : null;
+
+        if (response.ok && firstMsg && firstMsg.Status === 'success' && firstRecipient) {
+          const messageId = String(firstRecipient.MessageID || `mj_${Date.now()}`);
+          const messageUuid = firstRecipient.MessageUUID;
+          console.log(
+            `[MAILJET SENT] From: "${fromName}" <${fromEmail}> | To: ${recipientEmail} | Subject: ${message.subject} | MessageID: ${messageId}`
+          );
+          recordMailjetWebhookEvent({
+            event: 'sent',
+            time: Math.floor(Date.now() / 1000),
+            MessageID: firstRecipient.MessageID || messageId,
+            Message_GUID: messageUuid,
+            email: recipientEmail,
+            CustomID: message.customId,
+            Payload: message.eventPayload,
+            subject: message.subject,
+            fromName: fromName || 'olowo I Money Transfer'
+          });
+          return {
+            messageId,
+            delivered: true,
+            provider: 'mailjet',
+            mailjetMessageUuid: messageUuid
+          };
+        } else {
+          console.warn(
+            `[MAILJET WARNING] Status ${response.status} for ${recipientEmail}:`,
+            JSON.stringify(data)
+          );
+        }
+      } catch (err) {
+        console.error(`[MAILJET ERROR] Failed sending to ${recipientEmail}:`, err);
+      }
+    }
+
+    const messageId = `devmail_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+    console.log(`[DEV EMAIL STUB] To: ${recipientEmail} | Subject: ${message.subject}\n${message.text}`);
+    recordMailjetWebhookEvent({
+      event: 'sent',
+      time: Math.floor(Date.now() / 1000),
+      MessageID: messageId,
+      email: recipientEmail,
+      CustomID: message.customId,
+      Payload: message.eventPayload,
+      subject: message.subject,
+      fromName: fromName || 'olowo I Money Transfer'
+    });
+    return { messageId, delivered: true, provider: 'dev:email' };
+  }
+};
+
+async function processMailjetWebhookEvents(rawPayload) {
+  const list = Array.isArray(rawPayload)
+    ? rawPayload
+    : rawPayload && typeof rawPayload === 'object'
+    ? [rawPayload]
+    : [];
+
+  const processedEvents = [];
+  for (const item of list) {
+    if (!item || typeof item !== 'object') continue;
+    const eventType = String(item.event || 'sent').toLowerCase();
+    const evt = {
+      event: eventType,
+      time: typeof item.time === 'number' ? item.time : Math.floor(Date.now() / 1000),
+      MessageID: item.MessageID || `mj_${Date.now()}`,
+      Message_GUID: typeof item.Message_GUID === 'string' ? item.Message_GUID : undefined,
+      email: typeof item.email === 'string' ? item.email : '',
+      mj_campaign_id: typeof item.mj_campaign_id === 'number' ? item.mj_campaign_id : undefined,
+      mj_contact_id: typeof item.mj_contact_id === 'number' ? item.mj_contact_id : undefined,
+      customcampaign: typeof item.customcampaign === 'string' ? item.customcampaign : undefined,
+      CustomID: typeof item.CustomID === 'string' ? item.CustomID : undefined,
+      Payload: typeof item.Payload === 'string' ? item.Payload : undefined,
+      ip: typeof item.ip === 'string' ? item.ip : undefined,
+      geo: typeof item.geo === 'string' ? item.geo : undefined,
+      agent: typeof item.agent === 'string' ? item.agent : undefined,
+      url: typeof item.url === 'string' ? item.url : undefined,
+      error_related_to: typeof item.error_related_to === 'string' ? item.error_related_to : undefined,
+      error: typeof item.error === 'string' ? item.error : undefined,
+      hard_bounce: typeof item.hard_bounce === 'boolean' ? item.hard_bounce : undefined,
+      comment: typeof item.comment === 'string' ? item.comment : undefined
+    };
+    recordMailjetWebhookEvent(evt);
+    processedEvents.push(evt);
+  }
+  return { accepted: true, processed: processedEvents.length, events: processedEvents };
+}
+
+function sendOlowoRegistrationEmail(sender) {
+  if (!sender || !sender.email) return;
+  const toName = `${sender.firstName || ''} ${sender.lastName || ''}`.trim() || undefined;
+  const userId = sender.mitoUserId || sender.userId || sender.senderId || 'N/A';
+  void mailjetEmailProvider
+    .send({
+      to: sender.email,
+      toName,
+      subject: `Welcome to olowo I Money Transfer, ${sender.firstName || 'Customer'}!`,
+      text:
+        `Hello ${toName || 'there'},\n\n` +
+        `Welcome to olowo I Money Transfer! Your sender profile has been created and synced with MITO.\n\n` +
+        `Account Details:\n` +
+        `• Name: ${toName || 'N/A'}\n` +
+        `• Email: ${sender.email}\n` +
+        `• MITO User ID: ${userId}\n` +
+        `• Base Currency: ${sender.baseCurrency || 'GBP'}\n\n` +
+        `You can now check live exchange rates, select your recipient's bank, lock a 15-minute exchange rate, and send money securely.\n\n` +
+        `— olowo I Money Transfer`,
+      customId: `user_reg:${userId}:${Date.now()}`,
+      eventPayload: JSON.stringify({
+        type: 'user_registration',
+        userId,
+        email: sender.email
+      })
+    })
+    .catch(err => console.error('[mailjet] registration email failed:', err));
+}
+
+function sendOlowoTransactionInitiatedEmail(tx, sender) {
+  const toEmail = (tx && tx.senderEmail) || (sender && sender.email);
+  if (!toEmail || !tx) return;
+  const toName = tx.senderName || (sender && `${sender.firstName || ''} ${sender.lastName || ''}`.trim()) || undefined;
+  const sendAmt = `${tx.sendCurrency || 'GBP'} ${Number(tx.sendAmount || 0).toFixed(2)}`;
+  const recAmt = `${tx.receiveCurrency || 'NGN'} ${Number(tx.receiveAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  void mailjetEmailProvider
+    .send({
+      to: toEmail,
+      toName,
+      subject: `Transfer Initiated (${tx.reference || tx.transactionId}) — ${sendAmt} to ${tx.providerName || 'Recipient Bank'}`,
+      text:
+        `Hello ${toName || 'there'},\n\n` +
+        `Your money transfer has been initiated on olowo I Money Transfer.\n\n` +
+        `Transfer Summary:\n` +
+        `• Transaction ID: ${tx.transactionId}\n` +
+        `• Reference: ${tx.reference || tx.partnerReferenceNumber}\n` +
+        `• You Send: ${sendAmt}\n` +
+        `• Exchange Rate: 1 ${tx.sendCurrency || 'GBP'} = ${tx.exchangeRate} ${tx.receiveCurrency || 'NGN'}\n` +
+        `• Recipient Gets: ${recAmt}\n` +
+        `• Recipient: ${tx.beneficiaryName || 'To be selected/added on MITO Hosted Page'}\n` +
+        `• Destination Bank: ${tx.providerName || 'Selected Bank'}\n\n` +
+        `Complete your transfer securely via the MITO Hosted Page:\n${tx.paymentDirectUrl || tx.paymentUrl || ''}\n\n` +
+        `— olowo I Money Transfer`,
+      customId: `tx_init:${tx.transactionId}:${Date.now()}`,
+      eventPayload: JSON.stringify({
+        type: 'transaction_initiated',
+        transactionId: tx.transactionId,
+        reference: tx.reference,
+        email: toEmail
+      })
+    })
+    .catch(err => console.error('[mailjet] transaction initiated email failed:', err));
+}
+
+function sendOlowoKycStatusEmail(tx, sender, kycStatus, failureReason = '') {
+  const toEmail = (sender && sender.email) || (tx && tx.senderEmail);
+  if (!toEmail) return;
+  const toName =
+    (sender && `${sender.firstName || ''} ${sender.lastName || ''}`.trim()) ||
+    (tx && tx.senderName) ||
+    undefined;
+  const txId = (tx && tx.transactionId) || (sender && (sender.mitoUserId || sender.userId)) || 'N/A';
+
+  let subject = `KYC Verification Update — olowo I Money Transfer`;
+  let statusLine = `Your identity verification status is now: ${kycStatus}.`;
+  if (kycStatus === 'COMPLETED' || kycStatus === 'PASSED') {
+    subject = `KYC Verification Approved — olowo I Money Transfer`;
+    statusLine = `Great news! Your identity verification (KYC) has been approved. You will not need to repeat KYC unless your address or personal details change.`;
+  } else if (kycStatus === 'UNDER_REVIEW') {
+    subject = `KYC Verification Under Review — olowo I Money Transfer`;
+    statusLine = `Your identity verification is currently under review by our compliance team. You may continue with your beneficiary details while our team completes the review.`;
+  } else if (kycStatus === 'FAILED') {
+    subject = `Action Required: KYC Verification Unsuccessful — olowo I Money Transfer`;
+    statusLine = `Unfortunately, your identity verification could not be completed.${failureReason ? ` Reason: ${failureReason}` : ''}`;
+  }
+
+  void mailjetEmailProvider
+    .send({
+      to: toEmail,
+      toName,
+      subject,
+      text:
+        `Hello ${toName || 'there'},\n\n` +
+        `${statusLine}\n\n` +
+        `Reference: ${txId}\n\n` +
+        `— olowo I Money Transfer`,
+      customId: `kyc_${String(kycStatus).toLowerCase()}:${txId}:${Date.now()}`,
+      eventPayload: JSON.stringify({
+        type: 'kyc_status',
+        kycStatus,
+        transactionId: tx ? tx.transactionId : null,
+        email: toEmail
+      })
+    })
+    .catch(err => console.error('[mailjet] kyc status email failed:', err));
+}
+
+function sendOlowoPaymentOutcomeEmail(tx) {
+  if (!tx || !tx.senderEmail) return;
+  // Deduplicate if the exact same paymentCase + rawMitoOrderStatus email was already sent for this transaction
+  const emailDedupeKey = `${tx.paymentCase || tx.paymentStatus}:${tx.rawMitoOrderStatus || ''}`;
+  if (tx._lastEmailOutcomeKey === emailDedupeKey) return;
+  tx._lastEmailOutcomeKey = emailDedupeKey;
+
+  const toEmail = tx.senderEmail;
+  const toName = tx.senderName || undefined;
+  const sendAmt = `${tx.sendCurrency || 'GBP'} ${Number(tx.sendAmount || 0).toFixed(2)}`;
+  const recAmt = `${tx.receiveCurrency || 'NGN'} ${Number(tx.receiveAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const orderNo = tx.orderNo || tx.reference || tx.transactionId;
+
+  let subject = `Transfer Update (${orderNo}) — olowo I Money Transfer`;
+  let headline = `Your transfer status has been updated.`;
+
+  if (tx.paymentStatus === 'SUCCESS') {
+    subject = `Transfer Complete (${orderNo}) — ${sendAmt} sent to ${tx.beneficiaryName || 'Recipient'}`;
+    headline = `Great news! We have confirmed your payment of ${sendAmt} and your payout of ${recAmt} to ${tx.beneficiaryName || 'your recipient'} (${tx.providerName || 'Bank'}) is being processed.`;
+  } else if (tx.paymentCase === 'AWAITING_PAYMENT') {
+    subject = `Awaiting Your Bank Transfer (${orderNo}) — ${sendAmt}`;
+    headline = `Your transfer of ${sendAmt} (${recAmt} to ${tx.beneficiaryName || 'your recipient'}) is awaiting your bank transfer settlement (Status: ${tx.rawMitoOrderStatus || 'AWAITINGPAYMENT'}).`;
+  } else if (tx.paymentStatus === 'PENDING' || tx.paymentCase === 'IN_REVIEW') {
+    subject = `Transfer In Review (${orderNo}) — ${sendAmt}`;
+    headline = `Your transfer of ${sendAmt} to ${tx.beneficiaryName || 'your recipient'} is currently in process / under review (${tx.rawMitoOrderStatus || 'INREVIEW'}). We will notify you as soon as it completes.`;
+  } else {
+    subject = `Payment Not Completed (${orderNo}) — ${ tx.rawMitoOrderStatus || tx.paymentStatus }`;
+    headline = `Your payment for transfer ${tx.transactionId} (${sendAmt} to ${tx.beneficiaryName || 'your recipient'}) was not completed (Status: ${tx.rawMitoOrderStatus || tx.paymentStatus}). No funds were debited.`;
+  }
+
+  void mailjetEmailProvider
+    .send({
+      to: toEmail,
+      toName,
+      subject,
+      text:
+        `Hello ${toName || 'there'},\n\n` +
+        `${headline}\n\n` +
+        `Receipt & Transfer Details:\n` +
+        `• Transaction ID: ${tx.transactionId}\n` +
+        `• Order / Reference No: ${orderNo}\n` +
+        `• Status: ${tx.paymentStatus} (${tx.rawMitoOrderStatus || tx.paymentCase || tx.paymentStatus})\n` +
+        `• Send Amount: ${sendAmt}\n` +
+        `• Payout Amount: ${recAmt}\n` +
+        `• Exchange Rate: 1 ${tx.sendCurrency || 'GBP'} = ${tx.exchangeRate} ${tx.receiveCurrency || 'NGN'}\n` +
+        `• Recipient: ${tx.beneficiaryName || 'N/A'}\n` +
+        `• Destination Bank: ${tx.providerName || 'N/A'}\n` +
+        `• Payment Method: ${tx.paymentMethod || 'MITO Hosted Payment'}\n\n` +
+        `Thank you for using olowo I Money Transfer!\n\n` +
+        `— olowo I Money Transfer`,
+      customId: `tx_outcome:${tx.transactionId}:${Date.now()}`,
+      eventPayload: JSON.stringify({
+        type: 'payment_outcome',
+        transactionId: tx.transactionId,
+        orderNo,
+        paymentStatus: tx.paymentStatus,
+        paymentCase: tx.paymentCase,
+        rawMitoOrderStatus: tx.rawMitoOrderStatus,
+        email: toEmail
+      })
+    })
+    .catch(err => console.error('[mailjet] payment outcome email failed:', err));
+}
+
 const MITO_STAGING_CONFIG = {
   baseUrl: process.env.MITO_BASE_URL || 'https://furp02-staging.funtechcom.com/api/v1/mito',
   username: process.env.MITO_USERNAME || 'BaladApi',
@@ -553,6 +934,11 @@ app.get('/api/health', (req, res) => {
     affiliateId: MITO_STAGING_CONFIG.accessAffiliateNumber,
     serviceNo: MITO_STAGING_CONFIG.accessServiceNumber,
     thresholdGbp: EXTENDED_KYC_THRESHOLD_GBP,
+    mailjet: {
+      configured: Boolean(MAILJET_CONFIG.apiKey && MAILJET_CONFIG.secretKey),
+      fromEmail: MAILJET_CONFIG.fromEmail,
+      fromName: MAILJET_CONFIG.fromName
+    },
     timestamp: new Date().toISOString()
   });
 });
@@ -1016,6 +1402,9 @@ async function handleMitoCreateUser(req, res) {
 
   upsertSenderRecord(updatedSender, [existingLocalId, olowoAccountId, requestedUserId]);
 
+  // Send Welcome / Registration confirmation email via Mailjet
+  sendOlowoRegistrationEmail(updatedSender);
+
   res.json({
     code: 200,
     responseType: 'Success',
@@ -1385,6 +1774,7 @@ app.post('/api/v1/mito/Kyc/ExecuteSenderKyc', (req, res) => {
     sender.kycRequiredReason = null;
   }
   upsertSenderRecord(sender);
+  sendOlowoKycStatusEmail(null, sender, sender.kycStatus);
 
   const canProceedToBeneficiary = sender.kycStatus === 'PASSED' || sender.kycStatus === 'UNDER_REVIEW';
 
@@ -2787,6 +3177,9 @@ app.post('/api/v1/mito/Transactions/InitiateHostedTransaction', async (req, res)
 
   TRANSACTIONS.set(transactionId, txRecord);
 
+  // Send Transfer Initiated notification email via Mailjet
+  sendOlowoTransactionInitiatedEmail(txRecord, sender);
+
   res.json({
     code: 200,
     responseType: 'Success',
@@ -3141,6 +3534,7 @@ function handleMitoRedirectCallback(req, res) {
       (paymentCase === 'AWAITING_PAYMENT' ? 'Bank Transfer (BANKPAYMENT)' : tx.paymentMethod || 'MITO Hosted Payment');
     tx.completedAt = new Date().toISOString();
     tx.finalRedirectUrlWithParams = fullCallbackUrl;
+    sendOlowoPaymentOutcomeEmail(tx);
   }
 
   if (req.query.format === 'json') {
@@ -3322,6 +3716,7 @@ app.post('/api/v1/mito/Transactions/KycOutcome', (req, res) => {
       sender.verifiedProfileSnapshot = buildVerifiedProfileSnapshot(sender);
       upsertSenderRecord(sender);
     }
+    sendOlowoKycStatusEmail(tx, sender, 'COMPLETED');
 
     return res.json({
       code: 200,
@@ -3356,6 +3751,7 @@ app.post('/api/v1/mito/Transactions/KycOutcome', (req, res) => {
       sender.kycStatus = 'UNDER_REVIEW';
       upsertSenderRecord(sender);
     }
+    sendOlowoKycStatusEmail(tx, sender, 'UNDER_REVIEW');
 
     return res.json({
       code: 200,
@@ -3415,6 +3811,7 @@ app.post('/api/v1/mito/Transactions/KycOutcome', (req, res) => {
     sender.kycStatus = 'FAILED';
     upsertSenderRecord(sender);
   }
+  sendOlowoKycStatusEmail(tx, sender, 'FAILED', tx.kycFailureReason);
 
   return res.json({
     code: 200,
@@ -3828,6 +4225,7 @@ app.post('/api/v1/mito/Transactions/Abort', (req, res) => {
   tx.rawMitoOrderStatus = 'ABORTED';
   tx.abortReason = reason;
   tx.completedAt = new Date().toISOString();
+  sendOlowoPaymentOutcomeEmail(tx);
 
   res.json({
     code: 200,
@@ -3891,6 +4289,9 @@ app.post('/api/v1/mito/Transactions/CompleteHostedPayment', async (req, res) => 
     retrievedBeneficiaries = benSync.list || [];
   }
 
+  // Send Payment / Transfer Outcome email via Mailjet
+  sendOlowoPaymentOutcomeEmail(tx);
+
   res.json({
     code: 200,
     responseType: 'Success',
@@ -3918,6 +4319,91 @@ app.get('/api/v1/mito/affiliate/theme', (req, res) => {
 app.post('/api/v1/mito/affiliate/theme', (req, res) => {
   AFFILIATE_THEME = { ...AFFILIATE_THEME, ...req.body };
   res.json({ code: 200, responseType: 'Success', data: AFFILIATE_THEME });
+});
+
+// ============================================================================
+// 12. MAILJET TRANSACTIONAL EMAIL & EVENT API WEBHOOK ENDPOINTS (Matching Rhemito-UI)
+// ============================================================================
+app.post('/api/webhooks/mailjet', async (req, res) => {
+  try {
+    const { webhookUser, webhookPass } = MAILJET_CONFIG;
+    if (webhookUser && webhookPass) {
+      const authHeader = String(req.headers.authorization || '');
+      const expected = `Basic ${Buffer.from(`${webhookUser}:${webhookPass}`).toString('base64')}`;
+      if (authHeader !== expected) {
+        return res.status(401).json({ error: 'Unauthorized webhook request' });
+      }
+    }
+    const result = await processMailjetWebhookEvents(req.body);
+    return res.status(200).json({ status: 'ok', ...result });
+  } catch (err) {
+    return res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
+app.get('/api/webhooks/mailjet/events', (req, res) => {
+  return res.status(200).json({
+    fromEmail: MAILJET_CONFIG.fromEmail,
+    fromName: MAILJET_CONFIG.fromName,
+    configured: Boolean(MAILJET_CONFIG.apiKey && MAILJET_CONFIG.secretKey),
+    data: listRecentMailjetWebhookEvents()
+  });
+});
+
+app.post('/api/webhooks/mailjet/simulate', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const simulated = {
+      event: body.event || 'open',
+      time: Math.floor(Date.now() / 1000),
+      MessageID: body.MessageID || `sim_mj_${Date.now()}`,
+      email: body.email || 'mohammadmumtazkhan+24@gmail.com',
+      CustomID: body.transactionId ? `tx_outcome:${body.transactionId}` : undefined,
+      Payload: JSON.stringify({
+        transactionId: body.transactionId,
+        simulated: true
+      })
+    };
+    const result = await processMailjetWebhookEvents(simulated);
+    return res.status(200).json({ status: 'ok', ...result });
+  } catch (err) {
+    return res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
+app.post('/api/mailjet/send', async (req, res) => {
+  try {
+    const {
+      to,
+      toName,
+      subject = 'olowo I Money Transfer — Notification',
+      text = 'Thank you for using olowo I Money Transfer.',
+      html,
+      customId,
+      eventPayload
+    } = req.body || {};
+    if (!to) {
+      return res.status(400).json({ code: 400, responseType: 'Error', message: 'Recipient email (to) is required.' });
+    }
+    const result = await mailjetEmailProvider.send({
+      to,
+      toName,
+      subject,
+      text,
+      html,
+      customId,
+      eventPayload
+    });
+    return res.status(200).json({
+      code: 200,
+      responseType: 'Success',
+      fromEmail: MAILJET_CONFIG.fromEmail,
+      fromName: MAILJET_CONFIG.fromName,
+      data: result
+    });
+  } catch (err) {
+    return res.status(500).json({ code: 500, responseType: 'Error', message: err.message });
+  }
 });
 
 const PORT = process.env.PORT || 3000;
