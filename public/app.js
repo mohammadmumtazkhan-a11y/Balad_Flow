@@ -563,10 +563,11 @@ async function handleRegisterSubmit(event) {
   const lastName = (document.getElementById('regLastName')?.value || '').trim() || 'Beckham';
   const fullName = (document.getElementById('regFullName')?.value || '').trim() || `${firstName} ${lastName}`.trim();
   const email = (document.getElementById('regEmail')?.value || '').trim() || getCurrentDavidPresetEmail();
+  const isAhmed = email.toLowerCase().includes('ahmed');
   const phoneDialCode = document.getElementById('regDialCode')?.value || '+44';
-  const rawPhone = (document.getElementById('regPhone')?.value || '').replace(/^\+44\s*/, '').trim() || '7553039222';
+  const rawPhone = (document.getElementById('regPhone')?.value || '').replace(/^\+44\s*/, '').trim() || (isAhmed ? '7700900456' : '7553039222');
   const gender = (document.getElementById('regGender')?.value || '').trim() || 'M';
-  const dob = (document.getElementById('regDob')?.value || '').trim() || '1975-05-02';
+  const dob = (document.getElementById('regDob')?.value || '').trim() || (isAhmed ? '1988-05-14' : '1975-05-02');
   const baseCurrency = document.getElementById('regBaseCurrency')?.value || 'GBP';
   const legalEntityType = document.getElementById('regEntityType')?.value || 'I';
   const companyNumber = legalEntityType === 'B' ? (document.getElementById('regCompanyNumber')?.value || '').trim() : null;
@@ -575,10 +576,9 @@ async function handleRegisterSubmit(event) {
   const subStreet = (document.getElementById('regSubStreet')?.value || '').trim() || '';
   const street = (document.getElementById('regStreet')?.value || '').trim() || 'Holland Park';
   const city = (document.getElementById('regCity')?.value || '').trim() || 'London';
-  const postcode = (document.getElementById('regPostcode')?.value || '').trim() || 'W11 3TH';
+  const postcode = (document.getElementById('regPostcode')?.value || '').trim() || (isAhmed ? 'W11 3TD' : 'W11 3TH');
   const countryIso3 = document.getElementById('regCountryIso3')?.value || 'GBR';
   const birthCountryIso3 = (document.getElementById('regBirthCountryIso3')?.value || '').trim() || countryIso3 || 'GBR';
-  const isAhmed = email.toLowerCase().includes('ahmed');
 
   // 1A. Create / update Olowo account with ALL unified registration fields in one form (`POST /api/olowo/auth/register`)
   const payload = {
@@ -617,54 +617,63 @@ async function handleRegisterSubmit(event) {
       ...data.data,
       screenName: data.data.firstName
     };
-    STATE.senderId = data.data.senderId;
+    STATE.senderId = data.data.userId || data.data.mitoUserId || data.data.senderId;
   }
 
   // 1B. Register user in MITO right at the beginning (`POST /api/v1/mito/Users`) using all fields from the unified registration form!
-  const createUserRes = await callApi('POST', '/api/v1/mito/Users', {
-    userId: STATE.sender.userId || STATE.sender.mitoUserId || STATE.senderId,
-    senderId: STATE.senderId,
-    olowoAccountId: STATE.sender.olowoAccountId || STATE.senderId,
-    countryIso3,
-    email,
-    phoneNumber: `${phoneDialCode}${rawPhone}`,
-    firstName,
-    middleName,
-    lastName,
-    gender,
-    legalEntityType,
-    companyNumber,
-    businessName,
-    dateOfBirth: dob,
-    buildingNumber,
-    buildingName: '',
-    subStreet,
-    street,
-    addressCity: city,
-    addressPostcode: postcode,
-    addressCountryIso3: countryIso3,
-    birthCountryIso3
-  });
+  // If user is already verified (`kycStatus === 'PASSED'`) and submitted to MITO with unchanged details, preserve their verified profile & skip repeat KYC!
+  const alreadyVerifiedAndUnchanged =
+    STATE.sender &&
+    STATE.sender.kycStatus === 'PASSED' &&
+    STATE.sender.isSubmittedToMito &&
+    !(STATE.sender.completeness && STATE.sender.completeness.hasDetailsChangedSinceKyc);
 
-  if (createUserRes.ok && createUserRes.data && createUserRes.data.data) {
-    STATE.sender = {
-      ...STATE.sender,
-      ...createUserRes.data.data,
-      screenName: createUserRes.data.data.firstName || firstName
-    };
-    STATE.senderId =
-      createUserRes.data.data.userId ||
-      createUserRes.data.data.mitoUserId ||
-      createUserRes.data.data.senderId ||
-      STATE.senderId;
+  if (!alreadyVerifiedAndUnchanged) {
+    const createUserRes = await callApi('POST', '/api/v1/mito/Users', {
+      userId: STATE.sender.userId || STATE.sender.mitoUserId || STATE.senderId,
+      senderId: STATE.senderId,
+      olowoAccountId: STATE.sender.olowoAccountId || STATE.senderId,
+      countryIso3,
+      email,
+      phoneNumber: `${phoneDialCode}${rawPhone}`,
+      firstName,
+      middleName,
+      lastName,
+      gender,
+      legalEntityType,
+      companyNumber,
+      businessName,
+      dateOfBirth: STATE.sender.dob || STATE.sender.dateOfBirth || dob,
+      buildingNumber,
+      buildingName: '',
+      subStreet,
+      street,
+      addressCity: city,
+      addressPostcode: STATE.sender.postcode || STATE.sender.addressPostcode || postcode,
+      addressCountryIso3: countryIso3,
+      birthCountryIso3
+    });
+
+    if (createUserRes.ok && createUserRes.data && createUserRes.data.data) {
+      STATE.sender = {
+        ...STATE.sender,
+        ...createUserRes.data.data,
+        screenName: createUserRes.data.data.firstName || firstName
+      };
+      STATE.senderId =
+        createUserRes.data.data.userId ||
+        createUserRes.data.data.mitoUserId ||
+        createUserRes.data.data.senderId ||
+        STATE.senderId;
+    }
   }
 
   // Advance David Beckham's registration email sequence by +1 (`+24` -> `+25` -> `+26` ...) so the next registration submission uses a brand-new email!
-  if (!isAhmed) {
+  if (!isAhmed && !alreadyVerifiedAndUnchanged) {
     advanceDavidPresetEmailSequence(email);
   }
 
-  STATE.flowMode = isAhmed ? 'EXISTING_USER' : 'NEW_USER';
+  STATE.flowMode = isAhmed || alreadyVerifiedAndUnchanged ? 'EXISTING_USER' : 'NEW_USER';
   STATE.forceAllowKycEdit = false;
   updateTopFlowBarForUserState();
 
@@ -672,9 +681,10 @@ async function handleRegisterSubmit(event) {
   jumpToView('dashboard');
   const alertEl = document.getElementById('dashAlertText');
   if (alertEl) {
-    alertEl.innerHTML =
-      `✅ <strong>Step 1 Complete — User Registered in 1 Form (MITO <code>userId: ${STATE.sender.mitoUserId || STATE.sender.userId || STATE.senderId}</code> · <code>${STATE.sender.email}</code>)</strong> · ` +
-      `<strong>Step 2 Now Active:</strong> Check Corridors &amp; Rates → <strong>Select Recipient Bank (<code>GET /Providers</code>)</strong> → <strong>Lock Rate (<code>POST /Exchange/rates</code>)</strong> → <strong>Submit Transaction (<code>POST /Transactions/InitiateHostedTransaction</code>)</strong> (MITO Hosted Page continues flow for Beneficiary &amp; Payment)!`;
+    alertEl.innerHTML = alreadyVerifiedAndUnchanged
+      ? `✅ <strong>Signed In — Verified User (MITO <code>userId: ${STATE.sender.mitoUserId || STATE.sender.userId || STATE.senderId}</code> · <code>${STATE.sender.email}</code> · KYC: <code>PASSED</code>)</strong> · Repeat KYC is skipped! Click <strong>Continue to payment</strong> to proceed directly to Beneficiary &amp; Payment.`
+      : `✅ <strong>Step 1 Complete — User Registered in 1 Form (MITO <code>userId: ${STATE.sender.mitoUserId || STATE.sender.userId || STATE.senderId}</code> · <code>${STATE.sender.email}</code>)</strong> · ` +
+        `<strong>Step 2 Now Active:</strong> Check Corridors &amp; Rates → <strong>Lock Rate (<code>POST /Exchange/rates</code>)</strong> → <strong>Submit Transaction (<code>POST /Transactions/InitiateHostedTransaction</code>)</strong>!`;
   }
   const weatherModal = document.getElementById('weatherModalOverlay');
   if (weatherModal) weatherModal.classList.add('hidden');
@@ -684,10 +694,40 @@ async function handleLoginSubmit(event) {
   if (event) event.preventDefault();
   const email = (document.getElementById('loginEmail').value || 'ahmed.diallo@mitonetwork.com').trim();
   const isAhmed = email.toLowerCase().includes('ahmed');
+
+  // Sign in by looking up the existing account by email without overwriting profile details or invalidating PASSED KYC
+  const { ok, data } = await callApi('POST', '/api/olowo/auth/register', {
+    email,
+    presetMode: isAhmed ? 'ahmed_complete' : 'existing_login',
+    forceResetKyc: false
+  });
+
+  if (ok && data && data.data && data.data.kycStatus === 'PASSED' && data.data.isSubmittedToMito) {
+    STATE.sender = {
+      ...data.data,
+      screenName: data.data.firstName || (isAhmed ? 'Ahmed' : 'David')
+    };
+    STATE.senderId = data.data.userId || data.data.mitoUserId || data.data.senderId;
+    STATE.presetMode = isAhmed ? 'ahmed_complete' : STATE.presetMode;
+    STATE.flowMode = 'EXISTING_USER';
+    STATE.forceAllowKycEdit = false;
+    updateTopFlowBarForUserState();
+    jumpToView('dashboard');
+    const alertEl = document.getElementById('dashAlertText');
+    if (alertEl) {
+      alertEl.innerHTML =
+        `✅ <strong>Signed In — Verified User (MITO <code>userId: ${STATE.sender.mitoUserId || STATE.sender.userId || STATE.senderId}</code> · <code>${STATE.sender.email}</code> · KYC Status: <code>PASSED</code>)</strong> · ` +
+        `Repeat KYC is skipped! Click <strong>Continue to payment</strong> to proceed directly to Beneficiary &amp; Payment.`;
+    }
+    const weatherModal = document.getElementById('weatherModalOverlay');
+    if (weatherModal) weatherModal.classList.add('hidden');
+    return;
+  }
+
   if (isAhmed) {
-    fillRegistrationPreset('ahmed_complete');
+    fillRegistrationPreset('ahmed_complete', true);
   } else {
-    fillRegistrationPreset('david_incomplete');
+    fillRegistrationPreset('david_incomplete', true);
     document.getElementById('regEmail').value = email;
   }
   await handleRegisterSubmit(null);

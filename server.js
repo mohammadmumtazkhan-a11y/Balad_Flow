@@ -630,6 +630,29 @@ app.post('/api/olowo/auth/register', (req, res) => {
       email: 'ahmed.diallo@mitonetwork.com',
       userId: 'be6b86a7-8484-43df-9af6-09a1d871b8a1'
     });
+    if (existingAhmed) {
+      existingAhmed.userId = 'be6b86a7-8484-43df-9af6-09a1d871b8a1';
+      existingAhmed.senderId = 'be6b86a7-8484-43df-9af6-09a1d871b8a1';
+      existingAhmed.mitoUserId = 'be6b86a7-8484-43df-9af6-09a1d871b8a1';
+      existingAhmed.isSubmittedToMito = true;
+      existingAhmed.firstName = 'Ahmed';
+      existingAhmed.lastName = 'Diallo';
+      existingAhmed.dob = '1988-05-14';
+      existingAhmed.dateOfBirth = '1988-05-14';
+      existingAhmed.phone = '7700900456';
+      existingAhmed.phoneNumber = '+447700900456';
+      existingAhmed.buildingNumber = '23';
+      existingAhmed.street = 'Holland Park';
+      existingAhmed.address = '23 Holland Park';
+      existingAhmed.city = 'London';
+      existingAhmed.addressCity = 'London';
+      existingAhmed.postcode = 'W11 3TD';
+      existingAhmed.addressPostcode = 'W11 3TD';
+      existingAhmed.kycStatus = 'PASSED';
+      existingAhmed.kycTier = 'MINI_KYC';
+      existingAhmed.lastChangedFields = [];
+      upsertSenderRecord(existingAhmed);
+    }
     return res.json({
       code: 200,
       responseType: 'Success',
