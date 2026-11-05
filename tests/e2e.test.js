@@ -188,6 +188,8 @@ async function runE2ETests() {
     assert.strictEqual(loginExistingRes.code, 200);
     const existingUser = loginExistingRes.data;
     assert.strictEqual(existingUser.kycStatus, 'PASSED', 'Existing user Ahmed Diallo must have kycStatus === PASSED');
+    assert.strictEqual(existingUser.isSubmittedToMito, true, 'Existing user Ahmed Diallo must have isSubmittedToMito === true');
+    assert.strictEqual(existingUser.completeness.hasDetailsChangedSinceKyc, false, 'Sign In must not mark Ahmed Diallo profile as changed');
 
     // Lock rate for Existing User
     const existingRateRes = await fetch(`${baseUrl}/api/v1/mito/Exchange/rates`, {
