@@ -449,6 +449,41 @@ async function runE2ETests() {
     assert.ok(!htmlRes.includes('id="hostedFlowQuickOutcomeBar"'), 'Simulation status action bar must be removed from all pages');
     console.log('   ✅ Passed: Streamlined Registration, GBP 5 default, Rate lock button, and Hosted-only collection verified.\n');
 
+    // =========================================================================
+    // TEST 8: MAILJET TRANSACTIONAL EMAIL & EVENT WEBHOOK INTEGRATION
+    // =========================================================================
+    console.log('8️⃣  Testing Mailjet Transactional Email & Event Webhook Integration...');
+    const mjEventsRes = await fetch(`${baseUrl}/api/webhooks/mailjet/events`).then(r => r.json());
+    assert.strictEqual(mjEventsRes.fromName, 'olowo I Money Transfer', 'Expected Mailjet fromName === olowo I Money Transfer');
+    assert.strictEqual(mjEventsRes.fromEmail, 'mohammadmumtazkhan@gmail.com', 'Expected Mailjet fromEmail === mohammadmumtazkhan@gmail.com');
+    assert.ok(Array.isArray(mjEventsRes.data) && mjEventsRes.data.length > 0, 'Expected recorded Mailjet sent events from flow execution');
+
+    const mjSendRes = await fetch(`${baseUrl}/api/mailjet/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        to: 'test@example.com',
+        toName: 'Test Customer',
+        subject: 'E2E Mailjet Test',
+        text: 'Testing Mailjet integration for olowo I Money Transfer.'
+      })
+    }).then(r => r.json());
+    assert.strictEqual(mjSendRes.code, 200);
+    assert.strictEqual(mjSendRes.fromName, 'olowo I Money Transfer');
+    assert.strictEqual(mjSendRes.data.delivered, true);
+
+    const mjSimRes = await fetch(`${baseUrl}/api/webhooks/mailjet/simulate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        event: 'open',
+        email: 'test@example.com'
+      })
+    }).then(r => r.json());
+    assert.strictEqual(mjSimRes.status, 'ok');
+    assert.strictEqual(mjSimRes.processed, 1);
+    console.log('   ✅ Passed: Mailjet Send API v3.1 & Event Webhooks verified (From: "olowo I Money Transfer").\n');
+
     console.log('🎉 ALL BALAD × MITO E2E TESTS PASSED SUCCESSFULLY!');
   } finally {
     await new Promise(resolve => server.close(resolve));
