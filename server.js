@@ -700,9 +700,33 @@ function findSenderByEmailOrId({ email, userId, senderId, olowoAccountId } = {})
   return null;
 }
 
+// Track all dummy UK mobile numbers ever used so new user registrations NEVER repeat a number
+const USED_UK_PHONE_NUMBERS = new Set(['7553039222', '7700900456']);
+const MITO_SUBMITTED_UK_PHONES = new Set(['7553039222', '7700900456']);
+let ukDummyPhoneCounter = Math.floor(Math.random() * 900) + 100;
+
+function generateUniqueDummyUkPhone() {
+  const prefixes = ['74', '75', '77', '78', '79'];
+  for (let attempt = 0; attempt < 1000; attempt++) {
+    ukDummyPhoneCounter = (ukDummyPhoneCounter + 1) % 1000;
+    const prefix = prefixes[(ukDummyPhoneCounter + attempt) % prefixes.length];
+    const timePart = String(Date.now() + attempt).slice(-5);
+    const randPart = String(Math.floor(100 + Math.random() * 900));
+    const candidate = `${prefix}${timePart}${randPart}`.slice(0, 10);
+    if (candidate.length === 10 && !USED_UK_PHONE_NUMBERS.has(candidate) && !MITO_SUBMITTED_UK_PHONES.has(candidate)) {
+      USED_UK_PHONE_NUMBERS.add(candidate);
+      return candidate;
+    }
+  }
+  const fallback = `77${String(Date.now()).slice(-8)}`;
+  USED_UK_PHONE_NUMBERS.add(fallback);
+  return fallback;
+}
+
 function seedDefaultSenders() {
   // 1. David Beckham — New Olowo User identified by email `mohammadmumtazkhan+24@gmail.com` and userId
   //    (Only basic Olowo registration fields initially; once KYC passes, identified by email + userId so KYC won't repeat unless address/details change!)
+  const initialDummyUkPhone = generateUniqueDummyUkPhone();
   const s1 = {
     userId: 'OLW-LOCAL-928C',
     senderId: 'OLW-LOCAL-928C',
@@ -716,8 +740,8 @@ function seedDefaultSenders() {
     lastName: 'Beckham',
     email: 'mohammadmumtazkhan+24@gmail.com',
     phoneDialCode: '+44',
-    phone: '7553039222',
-    phoneNumber: '+447553039222',
+    phone: initialDummyUkPhone,
+    phoneNumber: `+44${initialDummyUkPhone}`,
     baseCurrency: 'GBP',
     // Full info fields NOT collected on Olowo Step 1 /register:
     gender: '',
@@ -1071,7 +1095,19 @@ app.post('/api/olowo/auth/register', (req, res) => {
   const parts = String(fullName).trim().split(/\s+/);
   const firstName = (reqFirstName && String(reqFirstName).trim()) || parts[0] || 'David';
   const lastName = (reqLastName && String(reqLastName).trim()) || parts.slice(1).join(' ') || 'Beckham';
-  const cleanPhone = String(phone).replace(/^\+44\s*/, '').trim();
+  const rawIncomingUkPhone = normalizeUkOrIntlPhone(phone);
+  const canReuseExistingUnsubmittedPhone =
+    !forceResetKyc &&
+    existingByEmailOrId &&
+    !existingByEmailOrId.isSubmittedToMito &&
+    existingByEmailOrId.phone &&
+    !MITO_SUBMITTED_UK_PHONES.has(existingByEmailOrId.phone) &&
+    rawIncomingUkPhone === existingByEmailOrId.phone;
+  const cleanPhone = canReuseExistingUnsubmittedPhone
+    ? existingByEmailOrId.phone
+    : (!rawIncomingUkPhone || USED_UK_PHONE_NUMBERS.has(rawIncomingUkPhone) || MITO_SUBMITTED_UK_PHONES.has(rawIncomingUkPhone)
+        ? generateUniqueDummyUkPhone()
+        : (USED_UK_PHONE_NUMBERS.add(rawIncomingUkPhone), rawIncomingUkPhone));
   const resolvedDob = String(dateOfBirth || dob || '').trim();
   const resolvedStreet = String(street || address || '').trim();
   const resolvedCity = String(addressCity || city || '').trim();
@@ -1300,6 +1336,24 @@ async function handleMitoCreateUser(req, res) {
   // Case 2: First-time user OR user whose address/details HAVE changed since KYC passed!
   const kycInvalidatedByChange = prevSender.kycStatus === 'PASSED' && changeCheck.hasChanged;
 
+  // Enforce unique dummy UK number for every new user registration (never repeat a phone number)
+  let resolvedLocalUkPhone = normalizeUkOrIntlPhone(phoneNumber || mobileNumber || phone);
+  if (!prevSender.isSubmittedToMito) {
+    if (!resolvedLocalUkPhone || MITO_SUBMITTED_UK_PHONES.has(resolvedLocalUkPhone)) {
+      if (prevSender.phone && !MITO_SUBMITTED_UK_PHONES.has(prevSender.phone)) {
+        resolvedLocalUkPhone = prevSender.phone;
+      } else {
+        resolvedLocalUkPhone = generateUniqueDummyUkPhone();
+      }
+    }
+    USED_UK_PHONE_NUMBERS.add(resolvedLocalUkPhone);
+    MITO_SUBMITTED_UK_PHONES.add(resolvedLocalUkPhone);
+  } else {
+    USED_UK_PHONE_NUMBERS.add(resolvedLocalUkPhone);
+    MITO_SUBMITTED_UK_PHONES.add(resolvedLocalUkPhone);
+  }
+  let finalCleanPhone = `44${resolvedLocalUkPhone}`;
+
   // Build exact 18-field MITO Staging payload for POST /api/v1/mito/Users
   const trimmedEmail = String(email || '').trim();
   const finalGender = gender || 'M';
@@ -1307,10 +1361,10 @@ async function handleMitoCreateUser(req, res) {
   const finalBuildingNumber = buildingNumber || '23';
   const finalPostcode = resolvedPostcode || 'W11 3TH';
   const finalBirthCountry = birthCountryIso3 || countryIso3 || 'GBR';
-  const buildMitoUserPayload = targetEmail => ({
+  const buildMitoUserPayload = (targetEmail, targetPhone = finalCleanPhone) => ({
     countryIso3,
     email: targetEmail,
-    phoneNumber: cleanPhone,
+    phoneNumber: targetPhone,
     firstName: firstName.trim(),
     middleName: middleName ? middleName.trim() : '',
     lastName: lastName.trim(),
@@ -1329,7 +1383,7 @@ async function handleMitoCreateUser(req, res) {
   });
 
   let stagingEmailUsed = trimmedEmail || `david.beckham.${Date.now()}@olowo.app`;
-  const mitoUserPayload = buildMitoUserPayload(stagingEmailUsed);
+  const mitoUserPayload = buildMitoUserPayload(stagingEmailUsed, finalCleanPhone);
 
   let stagingResult = null;
   let realMitoUserId = null;
@@ -1339,9 +1393,12 @@ async function handleMitoCreateUser(req, res) {
     if (stagingResult.ok && stagingResult.data && stagingResult.data.data && stagingResult.data.data.userId) {
       realMitoUserId = stagingResult.data.data.userId;
     } else if (stagingResult && !stagingResult.ok && trimmedEmail.includes('@')) {
-      // If this exact email was already registered on MITO Staging in an earlier run, retry with a unique tag so we still get a live MITO userId
+      // If this exact email or phone was already registered on MITO Staging in an earlier run, retry with a unique email tag & new unique UK number
       stagingEmailUsed = trimmedEmail.replace('@', `.r${Date.now().toString().slice(-4)}@`);
-      const retryStaging = await callMitoStagingApi('POST', '/Users', buildMitoUserPayload(stagingEmailUsed));
+      resolvedLocalUkPhone = generateUniqueDummyUkPhone();
+      MITO_SUBMITTED_UK_PHONES.add(resolvedLocalUkPhone);
+      finalCleanPhone = `44${resolvedLocalUkPhone}`;
+      const retryStaging = await callMitoStagingApi('POST', '/Users', buildMitoUserPayload(stagingEmailUsed, finalCleanPhone));
       if (retryStaging.ok && retryStaging.data && retryStaging.data.data && retryStaging.data.data.userId) {
         stagingResult = retryStaging;
         realMitoUserId = retryStaging.data.data.userId;
@@ -1365,9 +1422,9 @@ async function handleMitoCreateUser(req, res) {
     countryIso3,
     email: trimmedEmail,
     stagingEmail: stagingEmailUsed,
-    phoneNumber: cleanPhone,
+    phoneNumber: finalCleanPhone,
     phoneDialCode,
-    phone: String(phone).replace(/^\+44\s*/, '').trim(),
+    phone: resolvedLocalUkPhone,
     firstName: firstName.trim(),
     middleName: middleName || '',
     lastName: lastName.trim(),

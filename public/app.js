@@ -273,6 +273,7 @@ function switchHighLevelFlowMode(mode) {
   } else {
     fillRegistrationPreset('david_incomplete', true);
     const activeDavidEmail = document.getElementById('regEmail')?.value || getCurrentDavidPresetEmail();
+    const activeDummyUkPhone = getCurrentDummyUkPhone();
     STATE.sender = {
       senderId: '',
       userId: '',
@@ -282,7 +283,7 @@ function switchHighLevelFlowMode(mode) {
       screenName: 'David',
       email: activeDavidEmail,
       phoneDialCode: '+44',
-      phone: '7553039222',
+      phone: activeDummyUkPhone,
       baseCurrency: 'GBP',
       dob: '1975-05-02',
       buildingNumber: '23',
@@ -454,6 +455,103 @@ function syncRegFullNameFromParts() {
 }
 
 const DAVID_EMAIL_SEQ_STORAGE_KEY = 'balad_david_email_seq';
+const USED_UK_PHONES_STORAGE_KEY = 'balad_used_uk_phones';
+const CURRENT_UK_PHONE_STORAGE_KEY = 'balad_current_uk_phone';
+const SESSION_USED_UK_PHONES = new Set(['7553039222', '7700900456']);
+
+function normalizeLocalUkPhoneDigits(raw) {
+  return String(raw || '')
+    .replace(/[^0-9]/g, '')
+    .replace(/^44/, '')
+    .trim();
+}
+
+function getUsedDummyUkPhonesSet() {
+  const used = new Set(SESSION_USED_UK_PHONES);
+  try {
+    const raw = localStorage.getItem(USED_UK_PHONES_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        parsed.forEach(p => {
+          const clean = normalizeLocalUkPhoneDigits(p);
+          if (clean) used.add(clean);
+        });
+      }
+    }
+  } catch (_) {}
+  return used;
+}
+
+function saveUsedDummyUkPhonesSet(usedSet) {
+  usedSet.forEach(p => SESSION_USED_UK_PHONES.add(p));
+  try {
+    localStorage.setItem(USED_UK_PHONES_STORAGE_KEY, JSON.stringify(Array.from(usedSet)));
+  } catch (_) {}
+}
+
+function generateFreshDummyUkPhone() {
+  const used = getUsedDummyUkPhonesSet();
+  const prefixes = ['74', '75', '77', '78', '79'];
+  for (let attempt = 0; attempt < 500; attempt++) {
+    const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
+    const timeDigits = String(Date.now() + attempt).slice(-4);
+    const randDigits = String(Math.floor(1000 + Math.random() * 9000));
+    const candidate = `${prefix}${timeDigits}${randDigits}`.slice(0, 10);
+    if (candidate.length === 10 && !used.has(candidate)) {
+      return candidate;
+    }
+  }
+  return `77${String(Date.now()).slice(-8)}`;
+}
+
+function getCurrentDummyUkPhone() {
+  const used = getUsedDummyUkPhonesSet();
+  try {
+    const stored = normalizeLocalUkPhoneDigits(localStorage.getItem(CURRENT_UK_PHONE_STORAGE_KEY) || '');
+    if (stored.length === 10 && stored.startsWith('7') && !used.has(stored)) {
+      STATE.currentDummyUkPhone = stored;
+      return stored;
+    }
+  } catch (_) {}
+  if (
+    STATE.currentDummyUkPhone &&
+    STATE.currentDummyUkPhone.length === 10 &&
+    !used.has(STATE.currentDummyUkPhone)
+  ) {
+    return STATE.currentDummyUkPhone;
+  }
+  const fresh = generateFreshDummyUkPhone();
+  STATE.currentDummyUkPhone = fresh;
+  try {
+    localStorage.setItem(CURRENT_UK_PHONE_STORAGE_KEY, fresh);
+  } catch (_) {}
+  return fresh;
+}
+
+function advanceDummyUkPhoneSequence(submittedPhone = '') {
+  const used = getUsedDummyUkPhonesSet();
+  const cleanSubmitted = normalizeLocalUkPhoneDigits(submittedPhone);
+  if (cleanSubmitted) {
+    used.add(cleanSubmitted);
+  }
+  if (STATE.currentDummyUkPhone) {
+    used.add(normalizeLocalUkPhoneDigits(STATE.currentDummyUkPhone));
+  }
+  saveUsedDummyUkPhonesSet(used);
+
+  const nextPhone = generateFreshDummyUkPhone();
+  STATE.currentDummyUkPhone = nextPhone;
+  try {
+    localStorage.setItem(CURRENT_UK_PHONE_STORAGE_KEY, nextPhone);
+  } catch (_) {}
+
+  const regPhoneEl = document.getElementById('regPhone');
+  if (regPhoneEl && STATE.presetMode !== 'ahmed_complete') {
+    regPhoneEl.value = nextPhone;
+  }
+  return nextPhone;
+}
 
 function getCurrentDavidEmailSeq() {
   try {
@@ -530,12 +628,19 @@ function fillRegistrationPreset(presetKey, skipViewSwitch = false) {
     }
   } else {
     const currentDavidEmail = getCurrentDavidPresetEmail();
+    const currentDummyUkPhone = getCurrentDummyUkPhone();
     setVal('regFirstName', 'David');
     setVal('regLastName', 'Beckham');
     setVal('regFullName', 'David Beckham');
     setVal('regEmail', currentDavidEmail);
     setVal('regDialCode', '+44');
-    setVal('regPhone', '7553039222');
+    setVal('regPhone', currentDummyUkPhone);
+    setVal('profPhone', currentDummyUkPhone);
+    setVal('senderPhoneFullInput', `+44${currentDummyUkPhone}`);
+    const linkedPhoneEl = document.getElementById('linkedDisplayPhone');
+    if (linkedPhoneEl) linkedPhoneEl.textContent = `+44 ${currentDummyUkPhone}`;
+    const sumPhoneEl = document.getElementById('sumSenderPhone');
+    if (sumPhoneEl) sumPhoneEl.textContent = `+44 ${currentDummyUkPhone}`;
     setVal('regGender', 'M');
     setVal('regDob', '1975-05-02');
     setVal('regBaseCurrency', 'GBP');
@@ -565,7 +670,17 @@ async function handleRegisterSubmit(event) {
   const email = (document.getElementById('regEmail')?.value || '').trim() || getCurrentDavidPresetEmail();
   const isAhmed = email.toLowerCase().includes('ahmed');
   const phoneDialCode = document.getElementById('regDialCode')?.value || '+44';
-  const rawPhone = (document.getElementById('regPhone')?.value || '').replace(/^\+44\s*/, '').trim() || (isAhmed ? '7700900456' : '7553039222');
+  let rawPhone = normalizeLocalUkPhoneDigits(document.getElementById('regPhone')?.value || '');
+  if (isAhmed) {
+    rawPhone = rawPhone || '7700900456';
+  } else {
+    const usedPhones = getUsedDummyUkPhonesSet();
+    if (!rawPhone || usedPhones.has(rawPhone)) {
+      rawPhone = generateFreshDummyUkPhone();
+      const regPhoneEl = document.getElementById('regPhone');
+      if (regPhoneEl) regPhoneEl.value = rawPhone;
+    }
+  }
   const gender = (document.getElementById('regGender')?.value || '').trim() || 'M';
   const dob = (document.getElementById('regDob')?.value || '').trim() || (isAhmed ? '1988-05-14' : '1975-05-02');
   const baseCurrency = document.getElementById('regBaseCurrency')?.value || 'GBP';
@@ -629,13 +744,14 @@ async function handleRegisterSubmit(event) {
     !(STATE.sender.completeness && STATE.sender.completeness.hasDetailsChangedSinceKyc);
 
   if (!alreadyVerifiedAndUnchanged) {
+    const resolvedUkPhone = STATE.sender.phone || rawPhone;
     const createUserRes = await callApi('POST', '/api/v1/mito/Users', {
       userId: STATE.sender.userId || STATE.sender.mitoUserId || STATE.senderId,
       senderId: STATE.senderId,
       olowoAccountId: STATE.sender.olowoAccountId || STATE.senderId,
       countryIso3,
       email,
-      phoneNumber: `${phoneDialCode}${rawPhone}`,
+      phoneNumber: `${phoneDialCode}${resolvedUkPhone}`,
       firstName,
       middleName,
       lastName,
@@ -668,9 +784,10 @@ async function handleRegisterSubmit(event) {
     }
   }
 
-  // Advance David Beckham's registration email sequence by +1 (`+24` -> `+25` -> `+26` ...) so the next registration submission uses a brand-new email!
+  // Advance David Beckham's registration email sequence AND dummy UK phone number so the next registration never repeats!
   if (!isAhmed && !alreadyVerifiedAndUnchanged) {
     advanceDavidPresetEmailSequence(email);
+    advanceDummyUkPhoneSequence(STATE.sender.phone || rawPhone);
   }
 
   STATE.flowMode = isAhmed || alreadyVerifiedAndUnchanged ? 'EXISTING_USER' : 'NEW_USER';
@@ -1573,7 +1690,7 @@ function saveLinkedProfileChanges() {
   const legal = document.getElementById('profLegalName').value.trim() || 'David Beckham';
   const screen = document.getElementById('profScreenName').value.trim() || 'David';
   const dial = document.getElementById('profDialCode').value || '+44';
-  const phone = document.getElementById('profPhone').value.trim() || '7553039222';
+  const phone = document.getElementById('profPhone').value.trim() || getCurrentDummyUkPhone();
 
   const parts = legal.split(/\s+/);
   STATE.sender.firstName = parts[0] || 'David';
@@ -1597,7 +1714,7 @@ function saveLinkedProfileChanges() {
 async function saveSenderAddressAndOpenMitoKyc() {
   const email = document.getElementById('senderEmailInput').value.trim() || STATE.sender.email || getCurrentDavidPresetEmail();
   const phoneEl = document.getElementById('senderPhoneFullInput');
-  const phoneNumber = (phoneEl && phoneEl.value.trim()) || `${STATE.sender.phoneDialCode || '+44'}${STATE.sender.phone || '7553039222'}`;
+  const phoneNumber = (phoneEl && phoneEl.value.trim()) || `${STATE.sender.phoneDialCode || '+44'}${STATE.sender.phone || getCurrentDummyUkPhone()}`;
   const firstName = document.getElementById('senderFirstNameInput').value.trim() || 'David';
   const middleEl = document.getElementById('senderMiddleNameInput');
   const middleName = (middleEl && middleEl.value.trim()) || '';
