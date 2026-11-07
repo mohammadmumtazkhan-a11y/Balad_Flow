@@ -53,6 +53,8 @@ async function runE2ETests() {
     const newUser = regRes.data;
     assert.strictEqual(newUser.kycStatus, 'NOT_STARTED', 'New user must start with kycStatus === NOT_STARTED');
     assert.strictEqual(newUser.isSubmittedToMito, false, 'New user must not be submitted to MITO before Step 3');
+    assert.NotStrictEqual?.(newUser.phone, '7553039222');
+    assert.ok(newUser.phone && newUser.phone !== '7553039222' && /^7\d{9}$/.test(newUser.phone), `Expected unique 10-digit UK mobile number, got: ${newUser.phone}`);
 
     // 2B. Check Rates & Lock Rate (Step 2)
     const corridorsRes = await fetch(`${baseUrl}/api/v1/mito/Exchange/corridors`).then(r => r.json());
@@ -339,6 +341,7 @@ async function runE2ETests() {
     assert.strictEqual(minUserRes.code, 200, `Expected minimal user creation to succeed: ${JSON.stringify(minUserRes)}`);
     assert.ok(minUserRes.data.userId, 'Minimal user should receive a valid userId');
     assert.strictEqual(minUserRes.data.completeness.isComplete, true, 'Minimal user with only mandatory fields must be marked complete');
+    assert.notStrictEqual(minUserRes.data.phone, newUser.phone, 'Second new user registration must not repeat the first user UK phone number');
     const minUserId = minUserRes.data.userId;
 
     // 6B. Lock exchange rate & Initiate Hosted Transaction for unverified user (KYC required & no beneficiary selected)
